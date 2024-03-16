@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial import Delaunay
 
 JENGA_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
 JENGA_BLOCK_SPACING = .005  # in meters
@@ -7,18 +8,43 @@ WOOD_DENSITY = 0.5  # kg/m^3
 
 
 class Block:
-    def __init__(self, pos, orientation):
+    def __init__(self, pos, yaw=0.):
         """
         represents one block
         :param pos: position, np array
-        :param orientation: roll, pitch, yaw, represents orientation
+        :param yaw: represents orientation
 
         Note: generally, roll and pitch are 0 and yaw is the only relevant one
         """
         self.pos = pos
-        if orientation is None:
-            orientation = np.zeros(3)
-        self.orientation = orientation
+        self.yaw = yaw
+
+    def vertices(self):
+        """
+        returns vertices of block
+        :return: 8x3 array
+        """
+
+        dx, dy, dz = JENGA_BLOCK_DIM
+
+        return np.array([[
+            (X,
+             Y,
+             self.pos[2] + dz*(z_i - .5),
+             )
+            for (X, Y) in self.vertices_xy()] for z_i in range(2)]).reshape((8, 3))
+
+    def vertices_xy(self):
+        """
+        returns xy projected vertices of block
+        :return: 4x2 array
+        """
+        dx, dy, _ = JENGA_BLOCK_DIM
+        return self.pos[:2] + np.array([[
+            (dx*(x_i - .5)*np.cos(self.yaw) - dy*(y_i - .5)*np.sin(self.yaw),
+             dx*(x_i - .5)*np.sin(self.yaw) + dy*(y_i - .5)*np.cos(self.yaw),
+             )
+            for x_i in range(2)] for y_i in range(2)]).reshape((4, 2))
 
     def com(self):
         """
@@ -38,7 +64,7 @@ def random_block(L, i, pos_std=0., angle_std=0.):
     :return: block object
     """
 
-    rot = np.array((0., 0., (L%2)*np.pi/2))  # rotate yaw if odd level
+    rot = (L%2)*np.pi/2  # rotate yaw if odd level
 
     pos = np.zeros(3)
     pos += (0, 0, (L + 0.5)*JENGA_BLOCK_DIM[2])  # height of level + half the height of a block (since COM)
@@ -49,10 +75,10 @@ def random_block(L, i, pos_std=0., angle_std=0.):
     else:
         pos += (0, (i - 1)*(width + JENGA_BLOCK_SPACING), 0)
 
-    rot = rot + (0., 0., np.random.normal(0, angle_std))
+    rot = rot + np.random.normal(0, angle_std)
     pos = pos + (np.random.normal(0, pos_std), np.random.normal(0, pos_std), 0.)
 
-    return Block(pos=pos, orientation=rot)
+    return Block(pos=pos, yaw=rot)
 
 
 class Tower:
@@ -107,6 +133,16 @@ class Tower:
         """
         return self.Ns[0]
 
+    def blocks_on_level(self, L):
+        """
+        returns blocks on level L
+        :param L: level
+        :return: int
+        """
+        if L == self.height() - 1:
+            return self.Ns[-1]
+        return self.Ns[L] - self.Ns[L + 1]
+
     def height(self):
         """
         :return: height of tower
@@ -120,6 +156,42 @@ class Tower:
         """
         return self.COMs[0]
 
+    def valid_removes(self):
+        """
+        returns list of all (L,i) pairs that are allowed to be removed
+        """
+        out = []
+        for L in range(self.height() - 2 + self.top_layer_filled()):
+            # normally, we cannot remove blocks on the top two layers
+            # if top layer is filled, we can remvoe from the layer below it
+            if self.blocks_on_level(L) > 1:
+                out += [(L, i) for (i, t) in enumerate(self.block_info[L]) if t is not None]
+        return out
+
+    def is_valid_remove(self, L, i):
+        """
+        returns is specified block is allowed to be removed
+        :param L: level of block
+        :param i: index of block
+        :return: boolean
+        """
+
+        # initial checks
+        if L >= self.height() - 2:
+            if not self.top_layer_filled():
+                return False
+            elif L >= self.height() - 1:
+                return False
+
+        # if level will be empty
+        if self.blocks_on_level(L) <= 1:
+            return False
+
+        # if block does not exist
+        if self.block_info[L][i] is None:
+            return False
+        return True
+
     def remove_block(self, L, i):
         """
         removes specified block
@@ -127,11 +199,13 @@ class Tower:
         :param i: index of block
         :return: Tower object with specified block removed
         """
-        if L >= self.height() - 2:
-            if not self.top_layer_filled():
-                raise Exception("CANNOT REMOVE BLOCK BELOW INCOMPLETE TOP LAYER")
-            elif L >= self.height() - 1:
-                raise Exception("CANNOT REMOVE BLOCK ON TOP LAYER")
+        if not self.is_valid_remove(L=L, i=i):
+            if L >= self.height() - 2:
+                if not self.top_layer_filled():
+                    raise Exception("CANNOT REMOVE BLOCK BELOW INCOMPLETE TOP LAYER")
+                elif L >= self.height() - 1:
+                    raise Exception("CANNOT REMOVE BLOCK ON TOP LAYER")
+            raise Exception("BLOCK '" + str(i) + "' INVALID TO REMOVE ON LAYER" + str([(t is not None) for t in self.block_info[L]]))
 
         return Tower(
             [
@@ -145,9 +219,13 @@ class Tower:
         """
         returns if top layer is filled
         """
-        return self.Ns[-1] == 3
+        return self.blocks_on_level(self.height() - 1) == 3
 
     def valid_place_blocks(self):
+        """
+        returns the valid 'moves' to place a block on tower
+        :return: non-empty list of indices
+        """
         if self.top_layer_filled():
             return [i for i in range(3)]
         return [i for i in range(3) if self.block_info[-1][i] is None]
@@ -183,6 +261,35 @@ class Tower:
                 angle_std=self.angle_std,
             )
 
+    def falls_at_layer(self, L):
+        """
+        computes whether tower falls at layer L
+        :param L: layer of tower (must be < self.height-1)
+        :return: boolean of whether the tower above layer L has COM outside of the convex hull of layer L when projected to xy plane
+        """
+        com = self.COMs[L + 1][:2]  # COM ABOVE level, project to xy
+
+        layer = self.block_info[L]
+        V = np.concatenate([t.vertices_xy() for t in layer if t is not None], axis=0)
+        hull = Delaunay(V)
+
+        # find_simplex returns 0 if point is inside simplex, and -1 if outside.
+        # return if it 'falls' i.e. if hull.find_simplex < 0
+        return hull.find_simplex([com])[0] < 0.
+
+    def falls(self):
+        """
+        returns if the tower falls at any level
+        """
+        return any(self.falls_at_layer(L) for L in range(self.height() - 1))
+
+    def terminal_state(self):
+        """
+        returns if the tower is at a terminal state (ON THE START OF A TURN, i.e. player about to remove a block)
+            this is true if either the tower falls or there are no moves remaining
+        """
+        return self.falls() or len(self.valid_removes()) == 0
+
     def __str__(self):
         """
         returns string representation of tower
@@ -201,13 +308,19 @@ class Tower:
 
 
 if __name__ == "__main__":
+    b = random_block(1, 1, pos_std=0.)
     t = Tower(pos_std=0, angle_std=0)
-    print(t)
+    # print(t)
     t = t.remove_block(16, 2)
+    print(t.falls())
+    t = t.remove_block(16, 1)
+    print(t.falls())
+
     t = t.add_block(0)
     t = t.add_block(1)
     t = t.add_block(2)
 
-    print(t.com())
-    print(t.top_layer_filled())
-    print(t.valid_place_blocks())
+    print(t.falls())
+    # print(t.com())
+    # print(t.top_layer_filled())
+    # print(t.valid_place_blocks())
