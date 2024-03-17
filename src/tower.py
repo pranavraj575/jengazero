@@ -1,3 +1,7 @@
+"""
+contains Tower class
+encodes a tower, has helpful methods to get state, as well as make moves
+"""
 import numpy as np
 from scipy.spatial import Delaunay
 
@@ -168,14 +172,15 @@ class Tower:
                 out += [(L, i) for (i, t) in enumerate(self.block_info[L]) if t is not None]
         return out
 
-    def is_valid_remove(self, L, i):
+    def is_valid_remove(self, remove):
         """
         returns is specified block is allowed to be removed
-        :param L: level of block
-        :param i: index of block
+        :param remove: (L,i) tuple
+            L: level of block
+            i: index of block
         :return: boolean
         """
-
+        L, i = remove
         # initial checks
         if L >= self.height() - 2:
             if not self.top_layer_filled():
@@ -192,14 +197,16 @@ class Tower:
             return False
         return True
 
-    def remove_block(self, L, i):
+    def remove_block(self, remove):
         """
         removes specified block
-        :param L: level of block
-        :param i: index of block
+        :param remove: (L,i) tuple
+            L: level of block
+            i: index of block
         :return: Tower object with specified block removed
         """
-        if not self.is_valid_remove(L=L, i=i):
+        L, i = remove
+        if not self.is_valid_remove(remove=remove):
             if L >= self.height() - 2:
                 if not self.top_layer_filled():
                     raise Exception("CANNOT REMOVE BLOCK BELOW INCOMPLETE TOP LAYER")
@@ -230,9 +237,9 @@ class Tower:
             return [i for i in range(3)]
         return [i for i in range(3) if self.block_info[-1][i] is None]
 
-    def add_block(self, i, blk_pos_std=None, blk_angle_std=None):
+    def place_block(self, i, blk_pos_std=None, blk_angle_std=None):
         """
-        adds block at specified position
+        places block at specified position
         :param i: position to add
         :param blk_pos_std: pos stdev, if different from default
         :param blk_angle_std: angle stdev, if different from default
@@ -290,6 +297,39 @@ class Tower:
         """
         return self.falls() or len(self.valid_removes()) == 0
 
+    def valid_moves(self):
+        """
+        returns all valid next moves
+        :return: (all possible 'remove' steps, all possible 'place' steps)
+            Note that any choice from these is a valid next move
+        """
+        removes = self.valid_removes()
+        # Note: removing a block does not change the top layer
+        # thus, the possible placement moves remain constant after removing a block
+        places = self.valid_place_blocks()
+        return (removes, places)
+
+    def has_valid_moves(self):
+        """
+        returns whether we have any valid moves
+        enough to check if there are any valid removes
+        """
+        return len(self.valid_removes()) > 0
+
+    def play_move(self, remove, place):
+        """
+        :param remove: (L,i) tuple, remove ith block from Lth level
+        :param place: index of place action
+        :return: (Tower object with specified action taken, Boolean for whether tower fell)
+        note: remove must be in removes and place in places for (removes,places)=self.valid_moves()
+        """
+        removes, places = self.valid_moves()
+        if not (remove in removes and place in places):
+            raise Exception("NOT VALID MOVE: " + str(remove) + ',' + str(place))
+        removed = self.remove_block(remove)
+        placed = removed.place_block(place)
+        return placed, (removed.falls() or placed.falls())
+
     def __str__(self):
         """
         returns string representation of tower
@@ -311,14 +351,14 @@ if __name__ == "__main__":
     b = random_block(1, 1, pos_std=0.)
     t = Tower(pos_std=0, angle_std=0)
     # print(t)
-    t = t.remove_block(16, 2)
+    t = t.remove_block((16, 2))
     print(t.falls())
-    t = t.remove_block(16, 1)
+    t = t.remove_block((16, 1))
     print(t.falls())
 
-    t = t.add_block(0)
-    t = t.add_block(1)
-    t = t.add_block(2)
+    t = t.place_block(0)
+    t = t.place_block(1)
+    t = t.place_block(2)
 
     print(t.falls())
     # print(t.com())
