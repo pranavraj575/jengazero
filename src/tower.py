@@ -89,6 +89,8 @@ class Tower:
     """
     jenga tower representation
     list of layers, each layer is a list of three booleans
+    Note: this class does not change after initalization
+        all methods like "remove_block" create a new instance of the class
     """
 
     def __init__(self, block_info=None, default_ht=18, pos_std=.001, angle_std=.001):
@@ -107,6 +109,7 @@ class Tower:
             ]
         self.block_info = block_info
 
+        self.calculated = False  # whether we calculated things like COM
         # compute all of these
         self.update_info()
 
@@ -114,6 +117,7 @@ class Tower:
         """
         computation of features to avoid having to compute them each time
         """
+        self.calculated = True
         # since each block has equal mass, the COM of tower is just the straight average of COMs of blocks
         # we compute COMs at each layer, the COM of 'subtowers' starting from a layer are of interest
         self.Ns = []  # number of blocks above each layer, including that layer
@@ -347,10 +351,33 @@ class Tower:
         return s
 
 
+def featurize(tower: Tower, MAX_HEIGHT=54):
+    """
+    returns handpicked features of tower as an np vector
+    :param MAX_HEIGHT: max possible height of tower, default 54
+    :return: np vector, (54*2+54*3+1)
+    """
+    COMs = np.zeros((MAX_HEIGHT, 2))
+    blocks = np.zeros((MAX_HEIGHT, 3))
+
+    COMs[:tower.height(), :] = [[x, y] for x, y, z in tower.COMs]  # COMs[0] shoult be the overall tower COM, projected to xy
+    for i, layer in enumerate(tower.block_info):
+        blocks[i, :] = [t is not None for t in layer]
+
+    return np.concatenate(
+        ([tower.height()],
+         COMs.flatten(),
+         blocks.flatten(),
+         )
+    )
+
+
 if __name__ == "__main__":
     b = random_block(1, 1, pos_std=0.)
     t = Tower(pos_std=0, angle_std=0)
     # print(t)
+    for feature in featurize(Tower(default_ht=5).remove_block((0, 1)), MAX_HEIGHT=5):
+        print(feature)
     t = t.remove_block((16, 2))
     print(t.falls())
     t = t.remove_block((16, 1))
