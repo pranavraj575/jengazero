@@ -68,15 +68,17 @@ class DQN_player(Agent):
         self.epsilon = epsilon
         self.tau = tau
 
-        layers = [FEATURESIZE*2+3] + hidden_layers
+        layers = [FEATURESIZE*2 + 3] + hidden_layers
         self.network = DQN(layers=layers).to(device=DEVICE)
         self.target_net = DQN(layers=layers).to(DEVICE)
         self.update_target_net()
 
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)
         self.buffer = ReplayMemory()
+
         self.info = dict()
         self.info['epochs_trained'] = 0
+        self.info['test win rate'] = []
 
     def update_target_net(self):
         target_states = self.target_net.state_dict()
@@ -101,12 +103,12 @@ class DQN_player(Agent):
         """
         remove, place = action
         removed = tower.remove_block(remove)
-        L,i=remove
-        new_layer=np.array(tower.boolean_blocks()[L])
-        new_layer[i]=0.
+        L, i = remove
+        new_layer = np.array(tower.boolean_blocks()[L])
+        new_layer[i] = 0.
         placed = removed.place_block(place, blk_pos_std=0., blk_angle_std=0.)
         # adds in the layer after we removed a block
-        return torch.tensor(np.concatenate((new_layer,featurize(removed), featurize(placed))), dtype=torch.float32,
+        return torch.tensor(np.concatenate((new_layer, featurize(removed), featurize(placed))), dtype=torch.float32,
                             device=DEVICE).reshape((1, -1))
 
     def save_all(self, path):
@@ -244,7 +246,9 @@ class DQN_player(Agent):
             self.epsilon = self.epsilon*np.exp(-1/EPS_DECAY)
             self.info['epochs_trained'] += 1
             if testing_agent is not None:
-                print(self.test_against(testing_agent))
+                win_rate = self.test_against(testing_agent)
+                print(win_rate)
+                self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
 
 
 if __name__ == "__main__":
@@ -252,16 +256,22 @@ if __name__ == "__main__":
     from agents.randy import Randy
 
     DIR = os.path.abspath(os.path.dirname(os.path.dirname(sys.argv[0])))
+    save_path=os.path.join(DIR, 'data', 'dqn_against_random')
     seed(69)
     player = DQN_player([256])
     agent_pairs = [(player, player), (player, Randy())]
-    player.grab_fixed_amount(128, agent_pairs=agent_pairs)
+    if os.path.exists(save_path):
+        print('loading initial',save_path)
+        player.load_all(save_path)
+    else:
+        player.grab_fixed_amount(128, agent_pairs=[(Randy(),Randy()),])
 
     print('win rate initial', player.test_against(Randy()))
 
-    player.train(epochs=100, agent_pairs=agent_pairs, testing_agent=Randy())
+    player.train(epochs=10, agent_pairs=agent_pairs, testing_agent=Randy())
 
     print('win rate final', player.test_against(Randy()))
+    player.save_all(save_path)
     # add_training_data(player.buffer, Randy(), Randy(), skip_opponent_step=SKIP_OPPONENT_STEP)
     # add_training_data(player.buffer, Randy(), Randy(), skip_opponent_step=SKIP_OPPONENT_STEP)
     # player.optimize_step(batch_size=3)
