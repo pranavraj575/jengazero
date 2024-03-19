@@ -14,7 +14,7 @@ class Randy(Agent):
         super().__init__()
 
     def pick_move(self, tower):
-        removes, places = tower.valid_moves()
+        removes, places = tower.valid_moves_product()
 
         return (removes[np.random.choice(range(len(removes)))],
                 places[np.random.choice(range(len(places)))])
@@ -30,7 +30,7 @@ class SmartRandy(Randy):
         super().__init__()
 
     def pick_move(self, tower):
-        removes, places = tower.valid_moves()
+        removes, places = tower.valid_moves_product()
         possible = []
         for remove in removes:
             removed = tower.remove_block(remove)

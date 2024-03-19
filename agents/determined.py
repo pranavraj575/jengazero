@@ -15,7 +15,7 @@ class FastPick(Agent):
         super().__init__()
 
     def pick_move(self, tower):
-        removes, places = tower.valid_moves()
+        removes, places = tower.valid_moves_product()
         for remove in removes:
             removed = tower.remove_block(remove)
             if not removed.falls():

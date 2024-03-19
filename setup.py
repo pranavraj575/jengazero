@@ -7,6 +7,7 @@ setup(
     packages=find_packages(),
     install_requires=['numpy',
                       'scipy',
+                      'torch',
                       ],
     license='Liscence to Krill',
 )

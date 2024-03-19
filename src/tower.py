@@ -9,6 +9,7 @@ JENGA_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
 JENGA_BLOCK_SPACING = .005  # in meters
 
 WOOD_DENSITY = 0.5  # kg/m^3
+INITIAL_SIZE = 5  # number of levels in initial tower
 
 
 class Block:
@@ -22,6 +23,14 @@ class Block:
         """
         self.pos = pos
         self.yaw = yaw
+
+    def to_vector(self):
+        """
+        returns block encoded as a vector
+
+        x,y,z,angle
+        """
+        return np.concatenate((self.pos, [self.yaw]))
 
     def vertices(self):
         """
@@ -55,6 +64,18 @@ class Block:
         :return: np array, center of mass (is just pos)
         """
         return self.pos
+
+    def __eq__(self, other):
+        return np.array_equal(self.pos, other.pos) and self.yaw == other.yaw
+
+
+def block_from_vector(vector):
+    """
+    returns the block encoded by vector
+
+    x,y,z,angle = vector
+    """
+    return Block(pos=vector[:3], yaw=vector[3])
 
 
 def random_block(L, i, pos_std=0., angle_std=0.):
@@ -93,7 +114,7 @@ class Tower:
         all methods like "remove_block" create a new instance of the class
     """
 
-    def __init__(self, block_info=None, default_ht=18, pos_std=.001, angle_std=.001):
+    def __init__(self, block_info=None, default_ht=INITIAL_SIZE, pos_std=.001, angle_std=.001):
         """
         :param block_info: list of block triples, represents each layer
         :param default_ht: height to create tower if block info is None
@@ -216,7 +237,8 @@ class Tower:
                     raise Exception("CANNOT REMOVE BLOCK BELOW INCOMPLETE TOP LAYER")
                 elif L >= self.height() - 1:
                     raise Exception("CANNOT REMOVE BLOCK ON TOP LAYER")
-            raise Exception("BLOCK '" + str(i) + "' INVALID TO REMOVE ON LAYER" + str([(t is not None) for t in self.block_info[L]]))
+            raise Exception("BLOCK '" + str(i) + "' INVALID TO REMOVE ON LAYER" + str(
+                [(t is not None) for t in self.block_info[L]]))
 
         return Tower(
             [
@@ -254,7 +276,8 @@ class Tower:
         if blk_angle_std is None:
             blk_angle_std = self.angle_std
         if i not in self.valid_place_blocks():
-            raise Exception("i=" + str(i) + " DOES NOT FIT IN LEVEL " + str([(t is not None) for t in self.block_info[-1]]))
+            raise Exception(
+                "i=" + str(i) + " DOES NOT FIT IN LEVEL " + str([(t is not None) for t in self.block_info[-1]]))
 
         if self.top_layer_filled():
             new_block = random_block(L=self.height(), i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
@@ -301,7 +324,7 @@ class Tower:
         """
         return self.falls() or len(self.valid_removes()) == 0
 
-    def valid_moves(self):
+    def valid_moves_product(self):
         """
         returns all valid next moves
         :return: (all possible 'remove' steps, all possible 'place' steps)
@@ -312,6 +335,14 @@ class Tower:
         # thus, the possible placement moves remain constant after removing a block
         places = self.valid_place_blocks()
         return (removes, places)
+
+    def valid_moves(self):
+        moves = []
+        removes, places = self.valid_moves_product()
+        for remove in removes:
+            for place in places:
+                moves.append((remove, place))
+        return moves
 
     def has_valid_moves(self):
         """
@@ -327,12 +358,28 @@ class Tower:
         :return: (Tower object with specified action taken, Boolean for whether tower fell)
         note: remove must be in removes and place in places for (removes,places)=self.valid_moves()
         """
-        removes, places = self.valid_moves()
+        removes, places = self.valid_moves_product()
         if not (remove in removes and place in places):
             raise Exception("NOT VALID MOVE: " + str(remove) + ',' + str(place))
         removed = self.remove_block(remove)
         placed = removed.place_block(place)
         return placed, (removed.falls() or placed.falls())
+
+    def to_array(self):
+        """
+        returns tower representation as a list of numpy vectors
+        each row is an index (3L+i) along with an encoded block
+        """
+        # boolean = np.array([[t is not None for t in layer] for layer in self.block_info])
+        block_info = np.concatenate([
+            np.array([
+                np.concatenate(([L*3 + i], t.to_vector()))
+                for (i, t) in enumerate(layer) if t is not None])
+            for (L, layer) in enumerate(self.block_info)], axis=0)
+        return block_info
+
+    def __eq__(self, other):
+        return self.block_info == other.block_info
 
     def __str__(self):
         """
@@ -351,43 +398,39 @@ class Tower:
         return s
 
 
-def featurize(tower: Tower, MAX_HEIGHT=54):
+def tower_from_array(arr):
     """
-    returns handpicked features of tower as an np vector
-    :param MAX_HEIGHT: max possible height of tower, default 54
-    :return: np vector, (54*2+54*3+1)
+    returns the tower encoded by array
+
+    :param arr: is output of Tower.to_array
     """
-    COMs = np.zeros((MAX_HEIGHT, 2))
-    blocks = np.zeros((MAX_HEIGHT, 3))
-
-    COMs[:tower.height(), :] = [[x, y] for x, y, z in tower.COMs]  # COMs[0] shoult be the overall tower COM, projected to xy
-    for i, layer in enumerate(tower.block_info):
-        blocks[i, :] = [t is not None for t in layer]
-
-    return np.concatenate(
-        ([tower.height()],
-         COMs.flatten(),
-         blocks.flatten(),
-         )
-    )
+    height = round(arr[-1][0])//3 + 1
+    # height is 1 + level of last block
+    block_info = [[None for _ in range(3)] for _ in range(height)]
+    for vec in arr:
+        Li = round(vec[0])
+        L, i = Li//3, Li%3
+        block_info[L][i] = block_from_vector(vec[1:])
+    return Tower(block_info=block_info)
 
 
 if __name__ == "__main__":
     b = random_block(1, 1, pos_std=0.)
-    t = Tower(pos_std=0, angle_std=0)
+    t = Tower(pos_std=0.001, angle_std=0.001)
     # print(t)
-    for feature in featurize(Tower(default_ht=5).remove_block((0, 1)), MAX_HEIGHT=5):
-        print(feature)
-    t = t.remove_block((16, 2))
+    t = t.remove_block((INITIAL_SIZE - 2, 2))
     print(t.falls())
-    t = t.remove_block((16, 1))
+    t = t.remove_block((INITIAL_SIZE - 2, 1))
     print(t.falls())
-
+    t: Tower
     t = t.place_block(0)
     t = t.place_block(1)
     t = t.place_block(2)
 
     print(t.falls())
+    arr = t.to_array()
+    t2 = tower_from_array(arr)
+    print('equality:', t == t2)
     # print(t.com())
     # print(t.top_layer_filled())
     # print(t.valid_place_blocks())
