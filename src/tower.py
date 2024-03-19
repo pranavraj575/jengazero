@@ -404,6 +404,8 @@ def tower_from_array(arr):
 
     :param arr: is output of Tower.to_array
     """
+    if arr is None:
+        return None
     height = round(arr[-1][0])//3 + 1
     # height is 1 + level of last block
     block_info = [[None for _ in range(3)] for _ in range(height)]

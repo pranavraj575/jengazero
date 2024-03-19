@@ -19,12 +19,12 @@ class ReplayMemory:
         return random.sample(self.memory, batch_size)
 
     def save(self, filename):
-        f=open(filename,'wb')
+        f = open(filename, 'wb')
         pickle.dump(self.memory, f)
         f.close()
 
     def load(self, filename):
-        f=open(filename, 'rb')
+        f = open(filename, 'rb')
         self.memory = pickle.load(f)
         f.close()
 
@@ -35,17 +35,41 @@ class ReplayMemory:
         return len(self.memory)
 
 
-def add_training_data(replay: ReplayMemory, agent1: Agent, agent2: Agent, tower: Tower = None):
+def add_training_data(replay: ReplayMemory, agent1: Agent, agent2: Agent, tower: Tower = None,
+                      skip_opponent_step=False):
     """
     creates training data by having agents play, and sends it into replay buffer
+    :param skip_opponent_step: if true, models the 'next tower' as the players next move
+        otherwise, models 'next tower' as opponents tower, and something must be done about this when learning
     """
     loser, _, history = outcome([agent1, agent2], tower=tower)
-    for tower, action, next_tower, result in history:
+    for i in range(len(history) - 2):
+        tower, action, result = history[i]
+        opponent_tower, _, _ = history[i + 1]
+        player_next_tower, _, _ = history[i + 2]
+
         state = tower.to_array()
-        next_state = next_tower.to_array()
-        reward = float(result)  # reward is -1 if tower fell, 1 if the game was won on this move, 0 otherwise
-        terminal = bool(result)  # terminal is whether either the tower fell or the game was won
+        if skip_opponent_step:
+            next_state = player_next_tower.to_array()
+        else:
+            next_state = opponent_tower.to_array()
+        reward = float(result)  # this should always be 0
+        terminal = bool(result)  # this should always be False
         replay.push(state, action, next_state, reward, terminal)
+
+    # now handle last two steps
+    if len(history) >= 1:  # this should always be true, as first tower never falls
+        losing_tower, losing_action, losing_result = history[-1]
+        replay.push(losing_tower.to_array(), losing_action, None, -1., True)
+    if len(history) >= 2:  # this only runs if the first player succeeded on the first move
+        winning_tower, winning_action, winning_result = history[-2]
+        if skip_opponent_step:
+            # we model this as a 'success' step, causeing the agent to win the game
+            replay.push(winning_tower.to_array(), winning_action, None, 1., True)
+        else:
+            # otherwise, we just model this as another non-terminal state
+            losing_tower, _, _ = history[-1]
+            replay.push(winning_tower.to_array(), winning_action, losing_tower.to_array(), 0., False)
 
 
 if __name__ == "__main__":
