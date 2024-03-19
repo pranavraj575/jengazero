@@ -1,7 +1,8 @@
 from src.agent import *
+from src.utils import *
 
 from collections import namedtuple, deque
-import pickle, random
+import pickle
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'terminal'))
@@ -17,7 +18,11 @@ class ReplayMemory:
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
-
+    def full(self):
+        """
+        returns whetehr memory is full
+        """
+        return len(self.memory)==self.memory.maxlen
     def save(self, filename):
         f = open(filename, 'wb')
         pickle.dump(self.memory, f)
@@ -36,7 +41,7 @@ class ReplayMemory:
 
 
 def add_training_data(replay: ReplayMemory, agent1: Agent, agent2: Agent, tower: Tower = None,
-                      skip_opponent_step=False):
+                      skip_opponent_step=True):
     """
     creates training data by having agents play, and sends it into replay buffer
     :param skip_opponent_step: if true, models the 'next tower' as the players next move

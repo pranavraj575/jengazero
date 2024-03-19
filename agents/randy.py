@@ -2,8 +2,7 @@
 random agents (hard coded)
 """
 from src.agent import Agent
-import numpy as np
-
+from src.utils import *
 
 class Randy(Agent):
     """

@@ -2,8 +2,8 @@
 contains Tower class
 encodes a tower, has helpful methods to get state, as well as make moves
 """
-import numpy as np
 from scipy.spatial import Delaunay
+from src.utils import *
 
 JENGA_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
 JENGA_BLOCK_SPACING = .005  # in meters
@@ -156,6 +156,9 @@ class Tower:
         self.Ns.reverse()
         self.COMs.reverse()
 
+    def boolean_blocks(self):
+        return [[t is not None for t in layer] for layer in self.block_info]
+
     def num_blocks(self):
         """
         :return: number of blocks
@@ -301,6 +304,7 @@ class Tower:
         :param L: layer of tower (must be < self.height-1)
         :return: boolean of whether the tower above layer L has COM outside of the convex hull of layer L when projected to xy plane
         """
+        # TODO: add probabilisticness
         com = self.COMs[L + 1][:2]  # COM ABOVE level, project to xy
 
         layer = self.block_info[L]
