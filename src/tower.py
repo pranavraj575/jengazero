@@ -9,7 +9,7 @@ JENGA_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
 JENGA_BLOCK_SPACING = .005  # in meters
 
 WOOD_DENSITY = 0.5  # kg/m^3
-INITIAL_SIZE = 5  # number of levels in initial tower
+INITIAL_SIZE = 10  # number of levels in initial tower
 
 
 class Block:
@@ -237,11 +237,12 @@ class Tower:
         if not self.is_valid_remove(remove=remove):
             if L >= self.height() - 2:
                 if not self.top_layer_filled():
-                    raise Exception("CANNOT REMOVE BLOCK BELOW INCOMPLETE TOP LAYER")
+                    print("WARNING: CANNOT REMOVE BLOCK BELOW INCOMPLETE TOP LAYER")
                 elif L >= self.height() - 1:
-                    raise Exception("CANNOT REMOVE BLOCK ON TOP LAYER")
-            raise Exception("BLOCK '" + str(i) + "' INVALID TO REMOVE ON LAYER" + str(
-                [(t is not None) for t in self.block_info[L]]))
+                    print("WARNING: CANNOT REMOVE BLOCK ON TOP LAYER")
+            else:
+                print("WARNING: BLOCK '" + str(i) + "' INVALID TO REMOVE ON LAYER" + str(
+                    [(t is not None) for t in self.block_info[L]]))
 
         return Tower(
             [

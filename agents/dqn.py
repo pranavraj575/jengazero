@@ -57,18 +57,28 @@ class DQN(nn.Module):
         return x
 
 
-SKIP_OPPONENT_STEP = True
+SKIP_OPPONENT_STEP = False
 
 
 class DQN_player(Agent):
-    def __init__(self, hidden_layers, gamma=.99, epsilon=.9, lr=.001, tau=1.):
+    def __init__(self, hidden_layers, max_height=None, gamma=.99, epsilon=.9, lr=.001, tau=1.):
+        """
+        creates an agent that uses DQN
+        :param max_height: if unspecified, does the correct max_height according to INITIAL_SIZE
+            only specify if loading old model
+        """
         super().__init__()
 
         self.gamma = gamma
         self.epsilon = epsilon
         self.tau = tau
+        if max_height is None:
+            max_height = 3*INITIAL_SIZE
+        self.max_height = max_height
+        feature_size = 1 + max_height*2 + max_height*3
+        input_size = feature_size*2 + 3
 
-        layers = [FEATURESIZE*2 + 3] + hidden_layers
+        layers = [input_size] + hidden_layers
         self.network = DQN(layers=layers).to(device=DEVICE)
         self.target_net = DQN(layers=layers).to(DEVICE)
         self.update_target_net()
@@ -108,7 +118,9 @@ class DQN_player(Agent):
         new_layer[i] = 0.
         placed = removed.place_block(place, blk_pos_std=0., blk_angle_std=0.)
         # adds in the layer after we removed a block
-        return torch.tensor(np.concatenate((new_layer, featurize(removed), featurize(placed))), dtype=torch.float32,
+        return torch.tensor(np.concatenate((new_layer,
+                                            featurize(removed, MAX_HEIGHT=self.max_height),
+                                            featurize(placed, MAX_HEIGHT=self.max_height))), dtype=torch.float32,
                             device=DEVICE).reshape((1, -1))
 
     def save_all(self, path):
@@ -145,7 +157,17 @@ class DQN_player(Agent):
         moves = tower.valid_moves()
         if not moves:
             return -1.
-        return max(network(self.vectorize_state_action(tower, action)) for action in moves)
+        return max(self.q_value(tower=tower, action=action, network=network) for action in moves)
+
+    def q_value(self, tower: Tower, action, network=None):
+        """
+        returns Q-value of tower-action pair
+            network is self.network if not specified
+        """
+        if network is None:
+            network = self.network
+
+        return network(self.vectorize_state_action(tower, action))
 
     def optimize_step(self, batch_size=128, skip_opponent_step=SKIP_OPPONENT_STEP):
         """
@@ -204,7 +226,7 @@ class DQN_player(Agent):
         for example in thingy.memory:
             self.buffer.push(*example)
 
-    def test_against(self, agent, N=200):
+    def test_against(self, agent, N=100):
         """
         plays N games against agent, returns the success rate
             uses epsilon value of 0 (moves based on only learned Q-value)
@@ -228,11 +250,12 @@ class DQN_player(Agent):
         # return the number of times we did not lose
         return 1 - lost/N
 
-    def train(self, epochs=1, agent_pairs=None, testing_agent=None):
+    def train(self, epochs=1, agent_pairs=None, testing_agent=None, checkpt_dir=None, checkpt_freq=10):
         """
         training loop
         :param agent_pairs: agent pairs to use for training data
             if None, just plays against self
+        :param checkpt_dir: if specified save a model every checkpt_freq steps into a unique directory in checkpt_dir
         """
         EPS_DECAY = 1000
         if agent_pairs is None:
@@ -247,34 +270,64 @@ class DQN_player(Agent):
             self.info['epochs_trained'] += 1
             if testing_agent is not None:
                 win_rate = self.test_against(testing_agent)
-                print(win_rate)
+                print('epoch:', self.info['epochs_trained'], 'win_rate:', win_rate)
                 self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
+
+            if self.info['epochs_trained']%checkpt_freq == 0:
+                if checkpt_dir is not None:
+                    folder = os.path.join(checkpt_dir, 'checkpoints', str(self.info['epochs_trained']))
+                    if not os.path.exists(folder):
+                        os.makedirs(folder)
+                    self.save_all(folder)
+
+    def heatmap(self, tower: Tower):
+        """
+        returns the value of each possible action removing a block in tower
+            (an action consists of pick and place, we simply consider removing a block and
+                take the max Q-value over all actions removing this block)
+        """
+        removes, places = tower.valid_moves_product()
+        heat = dict()
+        for remove in removes:
+            for place in places:
+                if remove not in heat:
+                    heat[remove] = -np.inf
+                    qval = self.q_value(tower=tower, action=(remove, place)).item()
+                    heat[remove] = max(heat[remove], qval)
+        return heat
 
 
 if __name__ == "__main__":
     from agents.determined import FastPick
-    from agents.randy import Randy
+    from agents.randy import Randy, SmartRandy
 
+    # opponent=('random',Randy())
+    opponent = ('smart_random', SmartRandy())
+
+    epochs = 100
     DIR = os.path.abspath(os.path.dirname(os.path.dirname(sys.argv[0])))
-    save_path=os.path.join(DIR, 'data', 'dqn_against_random')
+    save_path = os.path.join(DIR, 'data',
+                             'dqn_against_' + opponent[0] + '_' + str(epochs) + '_epochs_towersize_' + str(
+                                 INITIAL_SIZE))
     seed(69)
     player = DQN_player([256])
-    agent_pairs = [(player, player), (player, Randy())]
-    if os.path.exists(save_path):
-        print('loading initial',save_path)
+    agent_pairs = [(player, player), (player, opponent[1])]
+    if os.path.exists(os.path.join(save_path, 'info.pkl')):
+        print('loading initial', save_path)
         player.load_all(save_path)
     else:
-        player.grab_fixed_amount(128, agent_pairs=[(Randy(),Randy()),])
+        print('getting games in buffer')
+        player.grab_fixed_amount(128, agent_pairs=[(opponent[1], opponent[1]), ])
+        print('done')
 
-    print('win rate initial', player.test_against(Randy()))
+    print('win rate initial', player.test_against(opponent[1]))
 
-    player.train(epochs=10, agent_pairs=agent_pairs, testing_agent=Randy())
+    player.train(epochs=epochs, agent_pairs=agent_pairs, testing_agent=opponent[1], checkpt_dir=save_path)
 
-    print('win rate final', player.test_against(Randy()))
-    player.save_all(save_path)
-    # add_training_data(player.buffer, Randy(), Randy(), skip_opponent_step=SKIP_OPPONENT_STEP)
-    # add_training_data(player.buffer, Randy(), Randy(), skip_opponent_step=SKIP_OPPONENT_STEP)
-    # player.optimize_step(batch_size=3)
+    print('win rate final', player.test_against(opponent[1]))
+    if True:
+        player.save_all(save_path)
+
     quit()
     print(player.tower_value(Tower()))
     for state, action, next_state, reward, terminal in player.buffer.memory:
