@@ -2,7 +2,7 @@
 contains Tower class
 encodes a tower, has helpful methods to get state, as well as make moves
 """
-from scipy.spatial import Delaunay
+from scipy.spatial import ConvexHull
 from src.utils import *
 
 JENGA_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
@@ -11,7 +11,11 @@ JENGA_BLOCK_SPACING = .005  # in meters
 WOOD_DENSITY = 0.5  # kg/m^3
 INITIAL_SIZE = 10  # number of levels in initial tower
 
-
+def point_in_hull(point, hull, tolerance=1e-12):
+        return all(
+            (np.dot(eq[:-1], point) + eq[-1] <= tolerance)
+            for eq in hull.equations)
+    
 class Block:
     def __init__(self, pos, yaw=0.):
         """
@@ -143,7 +147,7 @@ class Tower:
         # we compute COMs at each layer, the COM of 'subtowers' starting from a layer are of interest
         self.Ns = []  # number of blocks above each layer, including that layer
         self.COMs = []  # COM above each layer (inclusive, so COMs[0] is the COM of the tower, and COMs[-1] is the COM of last layer)
-
+        self.hulls = [] # store the convex hull of each layer.
         # going backwards so we can accumulate
         N = 0  # running count
         MOMENT = np.zeros(3)  # running moment (sum of positions of blocks, not averaged yet)
@@ -153,8 +157,13 @@ class Tower:
 
             self.Ns.append(N)
             self.COMs.append(MOMENT/N)
+
+            V = np.concatenate([t.vertices_xy() for t in layer if t is not None], axis=0)
+            self.hulls.append(ConvexHull(V))
+
         self.Ns.reverse()
         self.COMs.reverse()
+        self.hulls.reverse()
 
     def boolean_blocks(self):
         return [[t is not None for t in layer] for layer in self.block_info]
@@ -299,6 +308,7 @@ class Tower:
                 angle_std=self.angle_std,
             )
 
+    
     def falls_at_layer(self, L):
         """
         computes whether tower falls at layer L
@@ -308,13 +318,23 @@ class Tower:
         # TODO: add probabilisticness
         com = self.COMs[L + 1][:2]  # COM ABOVE level, project to xy
 
-        layer = self.block_info[L]
-        V = np.concatenate([t.vertices_xy() for t in layer if t is not None], axis=0)
-        hull = Delaunay(V)
+        hull = self.hulls[L]
 
         # find_simplex returns 0 if point is inside simplex, and -1 if outside.
         # return if it 'falls' i.e. if hull.find_simplex < 0
-        return hull.find_simplex([com])[0] < 0.
+        return not point_in_hull(com, hull)
+    
+    def raw_score_at_layer(self, L):
+        """
+        computes the signed distance from COM at layer L+1 to the convex hull of layer L. Can be thought of as an un-normalized score
+        :param L: layer of tower (must be < self.height-1)
+        :return: -1 * the signed distance from the projection of the convex hull at layer L+1 to the convex hull of layer L
+        """
+        hull = self.hulls[L]
+        com = self.COMs[L + 1][:2]
+        dists = np.array([np.dot(eq[:-1], com) + eq[-1] for eq in hull.equations])
+        i = np.argmin(np.abs(dists))
+        return -dists[i]
 
     def falls(self):
         """
@@ -424,10 +444,12 @@ def tower_from_array(arr):
 if __name__ == "__main__":
     b = random_block(1, 1, pos_std=0.)
     t = Tower(pos_std=0.001, angle_std=0.001)
-    # print(t)
+    print(t)
     t = t.remove_block((INITIAL_SIZE - 2, 2))
     print(t.falls())
+    print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info)-1)])
     t = t.remove_block((INITIAL_SIZE - 2, 1))
+    print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info)-1)])
     print(t.falls())
     t: Tower
     t = t.place_block(0)
@@ -438,6 +460,6 @@ if __name__ == "__main__":
     arr = t.to_array()
     t2 = tower_from_array(arr)
     print('equality:', t == t2)
-    # print(t.com())
-    # print(t.top_layer_filled())
-    # print(t.valid_place_blocks())
+    print(t.com())
+    print(t.top_layer_filled())
+    print(t.valid_place_blocks())

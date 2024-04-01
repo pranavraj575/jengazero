@@ -2,6 +2,7 @@
 methods to have agents play jenga
 defines a generic Agent class that other agents should inherit
 """
+from typing import List
 from src.tower import *
 
 
@@ -13,7 +14,7 @@ class Agent:
         raise NotImplementedError
 
 
-def outcome(agents: [Agent], tower: Tower = None, keep_history=True):
+def outcome(agents: List[Agent], tower: Tower = None, keep_history=True):
     """
     plays through a game and returns winning player (index)
     :param agents: list of Agents that play the tame
