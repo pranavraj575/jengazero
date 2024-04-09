@@ -253,6 +253,8 @@ class DQN_player(Agent):
     def train(self, epochs=1, agent_pairs=None, testing_agent=None, checkpt_dir=None, checkpt_freq=10):
         """
         training loop
+        :param epochs: total number of epochs to train
+            considers epochs already trained, if non-zero
         :param agent_pairs: agent pairs to use for training data
             if None, just plays against self
         :param checkpt_dir: if specified save a model every checkpt_freq steps into a unique directory in checkpt_dir
@@ -261,7 +263,7 @@ class DQN_player(Agent):
         if agent_pairs is None:
             agent_pairs = [(self, self)]
 
-        for epoch in range(epochs):
+        for epoch in range(epochs-self.info['epochs_trained']):
             agent1, agent2 = agent_pairs[np.random.randint(len(agent_pairs))]
             add_training_data(self.buffer, agent1=agent1, agent2=agent2, skip_opponent_step=SKIP_OPPONENT_STEP)
             loss = self.optimize_step()
@@ -301,15 +303,16 @@ if __name__ == "__main__":
     from agents.determined import FastPick
     from agents.randy import Randy, SmartRandy
 
-    # opponent=('random',Randy())
+    opponent=('random',Randy())
     opponent = ('smart_random', SmartRandy())
 
-    epochs = 100
-    DIR = os.path.abspath(os.path.dirname(os.path.dirname(sys.argv[0])))
+    epochs = 200
+    DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
     save_path = os.path.join(DIR, 'data',
                              'dqn_against_' + opponent[0] + '_' + str(epochs) + '_epochs_towersize_' + str(
                                  INITIAL_SIZE))
-    seed(69)
+    print('saving to', save_path)
+    seed(42069)
     player = DQN_player([256])
     agent_pairs = [(player, player), (player, opponent[1])]
     if os.path.exists(os.path.join(save_path, 'info.pkl')):
@@ -320,11 +323,8 @@ if __name__ == "__main__":
         player.grab_fixed_amount(128, agent_pairs=[(opponent[1], opponent[1]), ])
         print('done')
 
-    print('win rate initial', player.test_against(opponent[1]))
-
     player.train(epochs=epochs, agent_pairs=agent_pairs, testing_agent=opponent[1], checkpt_dir=save_path)
 
-    print('win rate final', player.test_against(opponent[1]))
     if True:
         player.save_all(save_path)
 
