@@ -11,11 +11,64 @@ JENGA_BLOCK_SPACING = .005  # in meters
 WOOD_DENSITY = 0.5  # kg/m^3
 INITIAL_SIZE = 10  # number of levels in initial tower
 
-def point_in_hull(point, hull, tolerance=1e-12):
-        return all(
-            (np.dot(eq[:-1], point) + eq[-1] <= tolerance)
-            for eq in hull.equations)
-    
+TOLERANCE = 1e-10
+
+
+def point_in_hull(point, hull, tolerance=TOLERANCE):
+    return all(
+        (np.dot(eq[:-1], point) + eq[-1] <= tolerance)
+        for eq in hull.equations)
+
+
+def hull_score_from_vtxs(point, vtxs):
+    return hull_score(point, ConvexHull(vtxs))
+
+
+def hull_score(point, hull, tolerance=TOLERANCE):
+    """
+    returns the 'score' of the point in the hull
+    if the point lies outside of the hull, returns positive number
+        score is distance to closest point in hull
+        represents how far it is from being stable
+    if the point lies inside, returns negative number
+        score is -(the distance to the closest bound)
+        represents how close it is to being out of bounds
+        note that we do not need to check vertices, as the closest point will be to a line
+    """
+
+    # hull equations are set up that dot(point, eq[:-1])+eq[-1] is the signed distance from the line
+    # if we augment the point with a 1, same as dot(point,eq) for each equation
+    # then we can dot the entire matrix for speed
+    dists = np.dot(hull.equations, np.concatenate((point, [1])))
+    stable = np.all(dists <= 0)
+
+    if stable:
+        return np.max(dists)
+    else:
+        # in this case, the closest point will either be a vertex or a projection onto a line
+
+        # projections to each line is the point minus (error * line vector)
+        projections = point - hull.equations[:, :-1]*dists.reshape(-1, 1)
+
+        # adds one to each row to dot product easier
+        aug_projections = np.concatenate([projections, np.ones((len(projections), 1))], axis=1)
+
+        # each column of this is the distance of each projection to all the equations
+        projection_dists = np.dot(hull.equations, aug_projections.T)
+
+        # these are the projections that are inside the hull
+        valid_projections = projections[np.max(projection_dists, axis=0) <= tolerance]
+
+        # points to check are valid projections and the vertices of original hull
+        points = np.concatenate((valid_projections, hull.points))
+
+        # distance to all points
+        point_dists = np.linalg.norm(points - point, axis=1)
+
+        # return the minimum of these
+        return np.min(point_dists)
+
+
 class Block:
     def __init__(self, pos, yaw=0.):
         """
@@ -147,7 +200,7 @@ class Tower:
         # we compute COMs at each layer, the COM of 'subtowers' starting from a layer are of interest
         self.Ns = []  # number of blocks above each layer, including that layer
         self.COMs = []  # COM above each layer (inclusive, so COMs[0] is the COM of the tower, and COMs[-1] is the COM of last layer)
-        self.hulls = [] # store the convex hull of each layer.
+        self.hulls = []  # store the convex hull of each layer.
         # going backwards so we can accumulate
         N = 0  # running count
         MOMENT = np.zeros(3)  # running moment (sum of positions of blocks, not averaged yet)
@@ -308,7 +361,6 @@ class Tower:
                 angle_std=self.angle_std,
             )
 
-    
     def falls_at_layer(self, L):
         """
         computes whether tower falls at layer L
@@ -323,7 +375,7 @@ class Tower:
         # find_simplex returns 0 if point is inside simplex, and -1 if outside.
         # return if it 'falls' i.e. if hull.find_simplex < 0
         return not point_in_hull(com, hull)
-    
+
     def raw_score_at_layer(self, L):
         """
         computes the signed distance from COM at layer L+1 to the convex hull of layer L. Can be thought of as an un-normalized score
@@ -332,9 +384,11 @@ class Tower:
         """
         hull = self.hulls[L]
         com = self.COMs[L + 1][:2]
-        dists = np.array([np.dot(eq[:-1], com) + eq[-1] for eq in hull.equations])
-        i = np.argmin(np.abs(dists))
-        return -dists[i]
+        return hull_score(com,hull)
+
+        #dists = np.array([np.dot(eq[:-1], com) + eq[-1] for eq in hull.equations])
+        #i = np.argmin(np.abs(dists))
+        #return -dists[i]
 
     def falls(self):
         """
@@ -445,11 +499,15 @@ if __name__ == "__main__":
     b = random_block(1, 1, pos_std=0.)
     t = Tower(pos_std=0.001, angle_std=0.001)
     print(t)
+    print(t.raw_score_at_layer(0))
+    quit()
     t = t.remove_block((INITIAL_SIZE - 2, 2))
+    print(t)
+
     print(t.falls())
-    print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info)-1)])
+    print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info) - 1)])
     t = t.remove_block((INITIAL_SIZE - 2, 1))
-    print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info)-1)])
+    print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info) - 1)])
     print(t.falls())
     t: Tower
     t = t.place_block(0)
