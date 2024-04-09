@@ -6,12 +6,12 @@ from matplotlib import pyplot as plt
 if __name__ == '__main__':
     plt.rcParams.update({'font.size': 15})
     seed(6924)
-    #seed(692,6925,6924)
+    # seed(692,6925,6924)
     DIR = os.path.abspath(os.path.dirname(sys.argv[0]))
     opponent = 'smart_random'
-    opponent='random'
-    player=None
-    #for epochs, correct_size in [(50, i) for i in [5,10,18]]:
+    opponent = 'random'
+    player = None
+    # for epochs, correct_size in [(50, i) for i in [5,10,18]]:
     for epochs, correct_size in [(50, 5)]:
         save_path = os.path.join(DIR, 'data',
                                  'dqn_against_' + opponent + '_' + str(epochs) + '_epochs_towersize_' + str(
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     plt.xlabel('Epochs')
     plt.ylabel('Proportion of games won')
     plt.legend()
-    #plt.show()
+    # plt.show()
 
     if True:
         possibilities = {
@@ -47,8 +47,8 @@ if __name__ == '__main__':
             (0, 2): .1,
         }
         player.load_all(os.path.join(DIR, 'data',
-                                 'dqn_against_smart_random_200_epochs_towersize_' + str(
-                                     correct_size)))
+                                     'dqn_against_smart_random_200_epochs_towersize_' + str(
+                                         correct_size)))
         t = Tower(default_ht=correct_size)
         for L in list(range(correct_size - 2)) + [
             np.random.choice((-1, -2))]:  # one of the top level or level right below it can be unfilled
@@ -64,7 +64,7 @@ if __name__ == '__main__':
                 continue
             for i in thing:
                 test = t.remove_block((L, i))
-                if not test.falls():
+                if not test.deterministic_falls():
                     t = test
         print(t)
         print('heatmap=', player.heatmap(tower=t))

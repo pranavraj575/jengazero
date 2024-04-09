@@ -34,7 +34,7 @@ def outcome(agents: List[Agent], tower: Tower = None, keep_history=True):
         history = []
     else:
         history = None
-    if tower.falls():
+    if tower.deterministic_falls():
         print("WARNING: tower input was unstable")
         return 0, turn, history
     while tower.has_valid_moves():

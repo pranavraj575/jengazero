@@ -18,9 +18,9 @@ class FastPick(Agent):
         removes, places = tower.valid_moves_product()
         for remove in removes:
             removed = tower.remove_block(remove)
-            if not removed.falls():
+            if not removed.deterministic_falls():
                 for place in places:
                     placed = removed.place_block(place, blk_pos_std=0, blk_angle_std=0)
-                    if not placed.falls():
+                    if not placed.deterministic_falls():
                         return (remove, place)
         return removes[-1], places[-1]
