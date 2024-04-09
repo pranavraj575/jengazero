@@ -376,6 +376,25 @@ class Tower:
         # return if it 'falls' i.e. if hull.find_simplex < 0
         return not point_in_hull(com, hull)
 
+    def log_prob_falls(self, scale=.001):
+        """
+        computes log of probability that tower falls
+            sum across layers
+                (equivalent to just multiplying the probabilities)
+        :return: log(prob)
+        """
+        return sum(self.log_prob_falls_at_layer(L, scale=scale) for L in range(self.height() - 1))
+
+    def log_prob_falls_at_layer(self, L, scale=.001):
+        """
+        computes log of probability that tower falls at layer L
+            probability is calculated by sigmoid of signed distance from the convex hull
+            scaled by some value so that
+        :param L: layer of tower (must be < self.height-1)
+        :return: log(prob)
+        """
+        return -np.log(1 + np.exp(self.raw_score_at_layer(L)/scale))
+
     def raw_score_at_layer(self, L):
         """
         computes the signed distance from COM at layer L+1 to the convex hull of layer L. Can be thought of as an un-normalized score
@@ -384,11 +403,7 @@ class Tower:
         """
         hull = self.hulls[L]
         com = self.COMs[L + 1][:2]
-        return hull_score(com,hull)
-
-        #dists = np.array([np.dot(eq[:-1], com) + eq[-1] for eq in hull.equations])
-        #i = np.argmin(np.abs(dists))
-        #return -dists[i]
+        return hull_score(com, hull)
 
     def falls(self):
         """
