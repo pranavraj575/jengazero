@@ -125,7 +125,7 @@ def block_loss(blocks: [TorchBlock], points, extra_loss=0.01):
         eqs = block.differentiable_equations()
         eq_dists = torch.cat((points, torch.ones((len(points), 1))), dim=1)@eqs.T
         projections = points.reshape((-1, 1, 2)) - (
-                    eqs[:, :-1].reshape(1, -1, 2)*eq_dists.reshape((len(eq_dists), -1, 1)))
+                eqs[:, :-1].reshape(1, -1, 2)*eq_dists.reshape((len(eq_dists), -1, 1)))
 
         proj_diffs = points.reshape((-1, 1, 2)) - projections
 
@@ -142,46 +142,76 @@ def block_loss(blocks: [TorchBlock], points, extra_loss=0.01):
         all_diffs = torch.cat((vtx_resid, proj_resid), dim=1)
         bests = torch.min(all_diffs, dim=1).values
         best_to_each.append(bests.reshape((-1, 1)))
-    overall=torch.cat(best_to_each, dim=1)
-    overall_best=torch.min(overall,dim=1)
-    if len(blocks)>1:
-        overall_worst=(torch.sum(overall,dim=1)-overall_best.values)/(len(blocks)-1)
-        overall_worst=torch.mean(overall_worst)
+    overall = torch.cat(best_to_each, dim=1)
+    overall_best = torch.min(overall, dim=1)
+    if len(blocks) > 1:
+        overall_worst = (torch.sum(overall, dim=1) - overall_best.values)/(len(blocks) - 1)
+        overall_worst = torch.mean(overall_worst)
     else:
-        overall_worst=0.
-    loss = torch.mean(overall_best.values)+extra_loss*overall_worst
+        overall_worst = 0.
+    loss = torch.mean(overall_best.values) + extra_loss*overall_worst
     loss.backward()
     return loss
 
 
 if __name__ == "__main__":
     from matplotlib import pyplot as plt
+    import matplotlib.animation as animation
+
+    seed(69)
 
     torch.autograd.set_detect_anomaly(True)
-    target = random_block(0, 0, 0, 0)
-    target2 = random_block(0, 2, 0, 0)
-    points = torch.cat((torch.tensor(block_to_2d_point_cloud(block=target, noise=.001,points=100)),
-                        torch.tensor(block_to_2d_point_cloud(block=target2, noise=.001,points=100))))
+    targets = [random_block(0, 0, .001, .003),
+               random_block(0, 1, .001, .003),
+               random_block(0, 2, .001, .003),
+               ]
+    points = torch.cat([torch.tensor(block_to_2d_point_cloud(block=target, noise=.0001, points=100))
+                        for target in targets])
 
-    block = random_torch_block(1, 0, 0, 0)
-    block2 = random_torch_block(1, 1, 0, 0)
+    num_blocks = 3
+    blocks = [random_torch_block(0, (2*i)%3, .001, .001) for i in range(num_blocks)]
+    # block = random_torch_block(0, 0, .0001, 0)
+    # block2 = random_torch_block(0, 1, .0001, 0)
 
-    optimizer = torch.optim.Adam(params=chain(block.parameters(), block2.parameters()), lr=.1)
+    all_params = []
+    for block in blocks:
+        all_params += list(block.parameters())
 
-    old = block.vertices_xy().detach().numpy()
-    old2 = block2.vertices_xy().detach().numpy()
+    optimizer = torch.optim.Adam(params=all_params,  # lr=.01
+                                 )
+    record = [
+        [block.vertices_xy().detach().numpy() for block in blocks]
+    ]
+    final_loss = 0
     for i in range(200):
-        print('\r',i, end='')
+        print('\r', i, end='')
         optimizer.zero_grad()
-        loss = block_loss([block, block2], points, extra_loss=1/(i+1))
+        final_loss = block_loss(blocks, points, extra_loss=1/(i + 1)
+                                )
         optimizer.step()
+        record.append([block.vertices_xy().detach().numpy() for block in blocks])
+    print('\r'+str(final_loss.item()))
+    fig, ax = plt.subplots()
+    scat = ax.scatter(points[:, 0], points[:, 1])
+    lines=[ax.plot(plotter[:, 0], plotter[:, 1])[0] for plotter in record[0]]
 
-    new = block.vertices_xy().detach().numpy()
-    new2 = block2.vertices_xy().detach().numpy()
+    print('True vals:')
+    for target in targets:
+        print(target.pos[:2],target.yaw)
+    print('learned vals:')
+    for block in blocks:
+        print(block.pos.detach().numpy()[:2],block.yaw.detach().numpy())
 
-    plt.scatter(points[:, 0], points[:, 1])
-    for (plotter, nm) in (old, 'old'), (old2, 'old2'), (new, 'new'), (new2, 'new2'):
-        plotter = plotter[[i%len(plotter) for i in range(len(plotter) + 1)]]
-        plt.plot(plotter[:, 0], plotter[:, 1], label=nm)
-    plt.legend()
+    def update(frame):
+        i = frame%len(record)
+        for k,plotter in enumerate(record[i]):
+
+            plotter = plotter[[i%len(plotter) for i in range(len(plotter) + 1)]]
+            lines[k].set_xdata(plotter[:, 0])
+            lines[k].set_ydata(plotter[:, 1])
+
+        return [scat]+lines
+
+
+    ani = animation.FuncAnimation(fig=fig, func=update, frames=200, interval=60)
     plt.show()
