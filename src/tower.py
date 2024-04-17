@@ -123,6 +123,7 @@ class Block:
     def vertices_xy(self):
         """
         returns xy projected vertices of block
+        ordered in a cycle
         :return: 4x2 array
         """
         dx, dy, _ = JENGA_BLOCK_DIM
@@ -130,7 +131,8 @@ class Block:
             (dx*(x_i - .5)*np.cos(self.yaw) - dy*(y_i - .5)*np.sin(self.yaw),
              dx*(x_i - .5)*np.sin(self.yaw) + dy*(y_i - .5)*np.cos(self.yaw),
              )
-            for x_i in range(2)] for y_i in range(2)]).reshape((4, 2))
+            for x_i in (range(2) if y_i==0 else range(1,-1,-1))] # go in reverse for y_i=1
+            for y_i in range(2)]).reshape((4, 2))
 
     def com(self):
         """
