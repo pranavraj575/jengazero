@@ -1,8 +1,11 @@
+import os.path
+
 from src.tower import *
 import torch
 from itertools import chain
 
 DEVICE = 'cpu'
+DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
 
 class TorchBlock(torch.nn.Module):
@@ -13,6 +16,14 @@ class TorchBlock(torch.nn.Module):
         super().__init__()
         self.pos = torch.nn.Parameter(pos)
         self.yaw = torch.nn.Parameter(yaw)
+
+    def to_vector(self):
+        """
+        returns block encoded as a vector
+
+        x,y,z,angle
+        """
+        return np.concatenate((self.pos.detach().numpy(), [self.yaw.detach().item()]))
 
     def vertices(self):
         """
@@ -64,6 +75,15 @@ class TorchBlock(torch.nn.Module):
         return self.pos[:2] + location_array@self.differiantable_rot_matrix()
 
 
+def torch_block_from_vector(vector):
+    """
+    returns the block encoded by vector
+
+    x,y,z,angle = vector
+    """
+    return TorchBlock(pos=torch.tensor(vector[:3]), yaw=torch.tensor(vector[3]))
+
+
 def block_to_2d_point_cloud(block: Block, points=100, noise=0.):
     """
     returns a set of points sampled from the boundaries of the block
@@ -109,14 +129,17 @@ def which_points_in_equations(points, eqs, tolerance=TOLERANCE):
     return dists <= tolerance
 
 
-def block_loss(blocks: [TorchBlock], points, extra_loss=0.01):
+def block_loss(blocks: [TorchBlock], points, extra_loss=0.0, extra_distance_loss=0.0):
     # extra loss adds error of distance of blocks to points not at min distance
+    # extra distance loss pushes blocks apart
+    # returns (loss, distance of each point to closest block line)
     LARGE = 69
     # iterate over each block, find the closest distance of each point to the block
     # then take the min for each point
     # this is the 'error' of the point
 
     best_to_each = []
+    add_distance = []
     for block in blocks:
         vertex_cycle = block.vertices_xy()
 
@@ -142,76 +165,178 @@ def block_loss(blocks: [TorchBlock], points, extra_loss=0.01):
         all_diffs = torch.cat((vtx_resid, proj_resid), dim=1)
         bests = torch.min(all_diffs, dim=1).values
         best_to_each.append(bests.reshape((-1, 1)))
-    overall = torch.cat(best_to_each, dim=1)
+        for block2 in blocks:
+            if block2 is not block:
+                add_distance.append(torch.linalg.norm(block.pos - block2.pos).reshape((1, 1)))
+
+    # overall = torch.cat(best_to_each, dim=1)
+    # for some reason norm error works better than squared error
+    overall = torch.sqrt(torch.cat(best_to_each, dim=1))
     overall_best = torch.min(overall, dim=1)
     if len(blocks) > 1:
         overall_worst = (torch.sum(overall, dim=1) - overall_best.values)/(len(blocks) - 1)
         overall_worst = torch.mean(overall_worst)
+
+        distances_loss = torch.mean(torch.cat(add_distance))
     else:
         overall_worst = 0.
-    loss = torch.mean(overall_best.values) + extra_loss*overall_worst
-    loss.backward()
-    return loss
+
+        distances_loss = 0.
+
+    loss = torch.mean(overall_best.values) + extra_loss*overall_worst + extra_distance_loss*distances_loss
+
+    return loss, overall_best.values
+
+
+def infer_block_locations(points):
+    """
+    infers block numbers and positions from a 2d pointcloud
+    :param points: N x 2 tensor of points to fit
+
+    returns (dict(num_blocks -> (loss, solution, point distances, parameter history), predicted num_blocks)
+        solution is a list of block vectors
+    """
+
+    assisted = 200
+    normal_loss = 100
+    range_blocks = range(1, 4)
+
+    records = dict()
+    for num_blocks in range_blocks:
+        best = (None, None, None)
+        for L in (0, 1):
+            blocks = [random_torch_block(L, (2*i)%3, .01, .01) for i in range(num_blocks)]
+
+            all_params = []
+            for block in blocks:
+                all_params += list(block.parameters())
+
+            optimizer = torch.optim.Adam(params=all_params,
+                                         # lr=.01
+                                         )
+            record = [
+                [block.to_vector() for block in blocks]
+            ]
+
+            for i in range(assisted):
+                optimizer.zero_grad()
+                loss, distances = block_loss(blocks, points,
+                                             extra_loss=1/(i + 1),
+                                             # extra_distance_loss=1/(i + 1),
+                                             )
+                loss.backward()
+                optimizer.step()
+                record.append([block.to_vector() for block in blocks])
+
+            for i in range(normal_loss):
+                optimizer.zero_grad()
+                loss, distances = block_loss(blocks, points,
+                                             )
+                loss.backward()
+                optimizer.step()
+                record.append([block.to_vector() for block in blocks])
+
+            final_loss, distances = block_loss(blocks, points)
+            final_loss = final_loss.item()
+            if best[0] is None or final_loss < best[0]:
+                best = (final_loss, record, distances)
+        final_loss, record, distances = best
+
+        # failed = distances > min(JENGA_BLOCK_DIM)/8
+        # succ = torch.logical_not(failed)
+
+        records[num_blocks] = (final_loss, record[-1], distances, record)
+
+    predicted_blocks = 1
+
+    if records[2][0] < 0.5*records[1][0]:
+        predicted_blocks = 2
+        if records[3][0] < (0.3)*records[2][0]:
+            predicted_blocks = 3
+    return records, predicted_blocks
 
 
 if __name__ == "__main__":
-    from matplotlib import pyplot as plt
-    import matplotlib.animation as animation
+    seed(69420)
 
-    seed(69)
+    # torch.autograd.set_detect_anomaly(True)
 
-    torch.autograd.set_detect_anomaly(True)
-    targets = [random_block(0, 0, .001, .003),
-               random_block(0, 1, .001, .003),
-               random_block(0, 2, .001, .003),
-               ]
-    points = torch.cat([torch.tensor(block_to_2d_point_cloud(block=target, noise=.0001, points=100))
-                        for target in targets])
+    for which_blocks in range(1, 8):
+        # encoded blocks to include
+        # on [1,7]
+        # ex: 7 has binary 111, so it contains all three blocks
+        range_blocks = range(1, 4)
+        which_blocks = bin(which_blocks)[2:]
+        while len(which_blocks) < 3:
+            which_blocks = '0' + which_blocks
+        print('blocks:', which_blocks)
 
-    num_blocks = 3
-    blocks = [random_torch_block(0, (2*i)%3, .001, .001) for i in range(num_blocks)]
-    # block = random_torch_block(0, 0, .0001, 0)
-    # block2 = random_torch_block(0, 1, .0001, 0)
+        targets = [random_block(0, i, .001, .003) for i in range(3) if which_blocks[i] == '1']
+        points = torch.cat([torch.tensor(block_to_2d_point_cloud(block=target, noise=.001, points=100))
+                            for target in targets])
 
-    all_params = []
-    for block in blocks:
-        all_params += list(block.parameters())
+        records, predicted_blocks = infer_block_locations(points)
 
-    optimizer = torch.optim.Adam(params=all_params,  # lr=.01
-                                 )
-    record = [
-        [block.vertices_xy().detach().numpy() for block in blocks]
-    ]
-    final_loss = 0
-    for i in range(200):
-        print('\r', i, end='')
-        optimizer.zero_grad()
-        final_loss = block_loss(blocks, points, extra_loss=1/(i + 1)
-                                )
-        optimizer.step()
-        record.append([block.vertices_xy().detach().numpy() for block in blocks])
-    print('\r'+str(final_loss.item()))
-    fig, ax = plt.subplots()
-    scat = ax.scatter(points[:, 0], points[:, 1])
-    lines=[ax.plot(plotter[:, 0], plotter[:, 1])[0] for plotter in record[0]]
+        print('prediced number:', predicted_blocks)
+        print('actual number:', len(targets))
 
-    print('True vals:')
-    for target in targets:
-        print(target.pos[:2],target.yaw)
-    print('learned vals:')
-    for block in blocks:
-        print(block.pos.detach().numpy()[:2],block.yaw.detach().numpy())
+        if False:
+            continue
+        from matplotlib import pyplot as plt
+        import matplotlib.animation as animation
 
-    def update(frame):
-        i = frame%len(record)
-        for k,plotter in enumerate(record[i]):
+        save_folder = os.path.join(DIR, 'temp', which_blocks)
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
 
-            plotter = plotter[[i%len(plotter) for i in range(len(plotter) + 1)]]
-            lines[k].set_xdata(plotter[:, 0])
-            lines[k].set_ydata(plotter[:, 1])
+        plt.plot(range_blocks, [records[k][0] for k in range_blocks])
+        plt.xlabel('number of blocks')
+        plt.xticks(range_blocks)
+        plt.ylabel('Loss')
+        plt.ylim(0, plt.ylim()[1])
+        plt.title("Final Loss Plot")
+        plt.savefig(os.path.join(save_folder, 'loss_plot.png'))
+        # plt.show()
+        plt.close()
 
-        return [scat]+lines
+        for k in records:
+            record = records[k][-1]
+
+            fig, ax = plt.subplots()
+            scat = ax.scatter(points[:, 0], points[:, 1])
+            lines = [ax.plot(points[:, 0], points[:, 1])[0] for _ in record[0]]
+
+            xbnd = list(plt.xlim())
+            ybnd = list(plt.ylim())
+
+            for i in range(len(record)):
+                for vectored in record[i]:
+                    blocked = torch_block_from_vector(vectored)
+                    vertices = blocked.vertices_xy().detach().numpy()
+                    xbnd[0] = min(xbnd[0], np.min(vertices[:, 0]))
+                    xbnd[1] = max(xbnd[1], np.min(vertices[:, 0]))
+
+                    ybnd[0] = min(ybnd[0], np.min(vertices[:, 1]))
+                    ybnd[1] = max(ybnd[1], np.min(vertices[:, 1]))
+
+            plt.xlim(xbnd)
+            plt.ylim(ybnd)
 
 
-    ani = animation.FuncAnimation(fig=fig, func=update, frames=200, interval=60)
-    plt.show()
+            def update(frame):
+                i = frame%len(record)
+                for k, vectored in enumerate(record[i]):
+                    blocked = torch_block_from_vector(vectored)
+                    plotter = blocked.vertices_xy().detach().numpy()
+                    plotter = plotter[[i%len(plotter) for i in range(len(plotter) + 1)]]
+                    lines[k].set_xdata(plotter[:, 0])
+                    lines[k].set_ydata(plotter[:, 1])
+
+                return [scat] + lines
+
+
+            ani = animation.FuncAnimation(fig=fig, func=update, frames=200, interval=60)
+            ani.save(os.path.join(save_folder, str(k) + '_blocks.gif'))
+            # plt.show()
+            plt.close()
+

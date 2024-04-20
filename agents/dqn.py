@@ -33,7 +33,7 @@ FEATURESIZE = 1 + INITIAL_SIZE*3*2 + INITIAL_SIZE*3*3
 
 
 class DQN(nn.Module):
-    def __init__(self, layers, activation=F.relu, output_activation=None):
+    def __init__(self, layers, activation=None, output_activation=None):
         """
         :param layers: list of ints, dim of layers in the network
         :param activation: activation before each hidden layer
@@ -41,17 +41,18 @@ class DQN(nn.Module):
         """
         super().__init__()
         self.nn_layers = nn.ModuleList()
-        self.activation = activation
+        if activation is None:
+            activation=nn.ReLU
         self.output_activation = output_activation
         for i in range(len(layers) - 1):
             self.nn_layers.append(nn.Linear(layers[i], layers[i + 1]))
+            self.nn_layers.append(activation())
         self.nn_layers.append(nn.Linear(layers[-1], 1))
 
     def forward(self, x):
         # return self.linear_relu_stack(x)
-        for layer in self.nn_layers[:-1]:
-            x = self.activation(layer(x))
-        x = self.nn_layers[-1](x)
+        for layer in self.nn_layers:
+            x = layer(x)
         if self.output_activation is not None:
             x = self.output_activation(x)
         return x
@@ -304,9 +305,9 @@ if __name__ == "__main__":
     from agents.randy import Randy, SmartRandy
 
     opponent=('random',Randy())
-    opponent = ('smart_random', SmartRandy())
+    #opponent = ('smart_random', SmartRandy())
 
-    epochs = 200
+    epochs = 50
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
     save_path = os.path.join(DIR, 'data',
                              'dqn_against_' + opponent[0] + '_' + str(epochs) + '_epochs_towersize_' + str(
