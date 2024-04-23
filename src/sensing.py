@@ -2,7 +2,7 @@ import os.path
 
 from src.tower import *
 import torch
-from itertools import chain
+from itertools import combinations
 
 DEVICE = 'cpu'
 DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
@@ -84,7 +84,7 @@ def torch_block_from_vector(vector):
     return TorchBlock(pos=torch.tensor(vector[:3]), yaw=torch.tensor(vector[3]))
 
 
-def block_to_2d_point_cloud(block: Block, points=100, noise=0.):
+def block_to_2d_point_cloud(block: Block, points=100, noise=0., distrib=None):
     """
     returns a set of points sampled from the boundaries of the block
     uses following sampling algorithm:
@@ -92,12 +92,21 @@ def block_to_2d_point_cloud(block: Block, points=100, noise=0.):
         pick a random point between them
     :param points: number of points to sample
     :param noise: gaussian variance to add to each sampled point
+    :param distrib: distribution of points across the lines
     """
+
     vertex_cycle = block.vertices_xy()
     shifted_cycle = vertex_cycle[[(i + 1)%len(vertex_cycle) for i in range(len(vertex_cycle))]]
 
+    if distrib is None:
+        distrib = [1/len(vertex_cycle) for _ in range(len(vertex_cycle))]
+    else:
+        ss = sum(distrib)
+        distrib = [d/ss for d in distrib]
     start_end = np.stack((vertex_cycle, shifted_cycle), axis=1)
-    adj_samples = start_end[np.random.randint(len(vertex_cycle), size=points), :, :]
+
+    adj_samples = start_end[np.random.choice(range(len(vertex_cycle)), size=points, p=distrib), :, :]
+    # adj_samples = start_end[np.random.randint(len(vertex_cycle), size=points), :, :]
     lambdas = np.random.random(points)  # proportion to go on line along adjacent points
 
     mult = np.array([lambdas, 1 - lambdas]).T
@@ -129,10 +138,18 @@ def which_points_in_equations(points, eqs, tolerance=TOLERANCE):
     return dists <= tolerance
 
 
-def block_loss(blocks: [TorchBlock], points, extra_loss=0.0, extra_distance_loss=0.0):
-    # extra loss adds error of distance of blocks to points not at min distance
-    # extra distance loss pushes blocks apart
-    # returns (loss, distance of each point to closest block line)
+def block_loss(blocks: [TorchBlock], points, weights=None, extra_loss=0.0, extra_distance_loss=0.0):
+    """
+    loss calculation
+    points is Nx2
+    weights is none or size N
+    extra loss adds error of distance of blocks to points not at min distance
+    extra distance loss pushes blocks apart
+
+    returns (loss, distance of each point to closest block line)
+    """
+    if weights is None:
+        weights=torch.ones(points.shape[0])
     LARGE = 69
     # iterate over each block, find the closest distance of each point to the block
     # then take the min for each point
@@ -144,15 +161,21 @@ def block_loss(blocks: [TorchBlock], points, extra_loss=0.0, extra_distance_loss
         vertex_cycle = block.vertices_xy()
 
         vtx_diffs = points.reshape((-1, 1, 2)) - vertex_cycle.reshape((1, -1, 2))
+        # differences from points to vertexes
 
         eqs = block.differentiable_equations()
+        # all the equations of the block
         eq_dists = torch.cat((points, torch.ones((len(points), 1))), dim=1)@eqs.T
+        # projection distances of points to each line of the block
         projections = points.reshape((-1, 1, 2)) - (
                 eqs[:, :-1].reshape(1, -1, 2)*eq_dists.reshape((len(eq_dists), -1, 1)))
+        # projection of each point to each line of block
 
         proj_diffs = points.reshape((-1, 1, 2)) - projections
+        # difference of point to projection
 
         bad_idxs = torch.logical_not(which_points_in_equations(projections, eqs))
+        # if projection points outside the block, ignore them
 
         vtx_resid = vtx_diffs.unsqueeze(-2)@vtx_diffs.unsqueeze(-1)
         vtx_resid = vtx_resid.reshape(vtx_resid.shape[:2])
@@ -175,15 +198,15 @@ def block_loss(blocks: [TorchBlock], points, extra_loss=0.0, extra_distance_loss
     overall_best = torch.min(overall, dim=1)
     if len(blocks) > 1:
         overall_worst = (torch.sum(overall, dim=1) - overall_best.values)/(len(blocks) - 1)
-        overall_worst = torch.mean(overall_worst)
+        overall_worst = torch.mean(overall_worst*weights)
 
-        distances_loss = torch.mean(torch.cat(add_distance))
+        distances_loss = -torch.mean(torch.cat(add_distance))
     else:
         overall_worst = 0.
 
         distances_loss = 0.
 
-    loss = torch.mean(overall_best.values) + extra_loss*overall_worst + extra_distance_loss*distances_loss
+    loss = torch.mean(overall_best.values * weights) + extra_loss*overall_worst + extra_distance_loss*distances_loss
 
     return loss, overall_best.values
 
@@ -201,45 +224,56 @@ def infer_block_locations(points):
     normal_loss = 100
     range_blocks = range(1, 4)
 
+    dist_matrix = torch.linalg.norm(torch.unsqueeze(points,0) - torch.unsqueeze(points,1), dim=-1)
+    inv_sq_dist_matrix=torch.pow(dist_matrix+torch.eye(len(dist_matrix)),-2)-torch.eye(len(dist_matrix))
+    densities = torch.sum(inv_sq_dist_matrix,dim=1)/torch.pi
+    weights=1/densities
+    norm_weights=weights/torch.sum(weights)
+
     records = dict()
     for num_blocks in range_blocks:
         best = (None, None, None)
         for L in (0, 1):
-            blocks = [random_torch_block(L, (2*i)%3, .01, .01) for i in range(num_blocks)]
+            for choice in combinations(range(3), num_blocks):
+                blocks = [random_torch_block(L, i, .01, .01) for i in range(3) if i in choice]
 
-            all_params = []
-            for block in blocks:
-                all_params += list(block.parameters())
+                all_params = []
+                for block in blocks:
+                    all_params += list(block.parameters())
 
-            optimizer = torch.optim.Adam(params=all_params,
-                                         # lr=.01
-                                         )
-            record = [
-                [block.to_vector() for block in blocks]
-            ]
-
-            for i in range(assisted):
-                optimizer.zero_grad()
-                loss, distances = block_loss(blocks, points,
-                                             extra_loss=1/(i + 1),
-                                             # extra_distance_loss=1/(i + 1),
+                optimizer = torch.optim.Adam(params=all_params,
+                                             # lr=.01
                                              )
-                loss.backward()
-                optimizer.step()
-                record.append([block.to_vector() for block in blocks])
+                record = [
+                    [block.to_vector() for block in blocks]
+                ]
 
-            for i in range(normal_loss):
-                optimizer.zero_grad()
-                loss, distances = block_loss(blocks, points,
-                                             )
-                loss.backward()
-                optimizer.step()
-                record.append([block.to_vector() for block in blocks])
+                for i in range(assisted):
+                    optimizer.zero_grad()
+                    loss, distances = block_loss(blocks,
+                                                 points,
+                                                 weights=norm_weights,
+                                                 extra_loss=1/(i + 1),
+                                                 # extra_distance_loss=1/(i + 1),
+                                                 )
+                    loss.backward()
+                    optimizer.step()
+                    record.append([block.to_vector() for block in blocks])
 
-            final_loss, distances = block_loss(blocks, points)
-            final_loss = final_loss.item()
-            if best[0] is None or final_loss < best[0]:
-                best = (final_loss, record, distances)
+                for i in range(normal_loss):
+                    optimizer.zero_grad()
+                    loss, distances = block_loss(blocks,
+                                                 points,
+                                                 weights=norm_weights,
+                                                 )
+                    loss.backward()
+                    optimizer.step()
+                    record.append([block.to_vector() for block in blocks])
+
+                final_loss, distances = block_loss(blocks, points)
+                final_loss = final_loss.item()
+                if best[0] is None or final_loss < best[0]:
+                    best = (final_loss, record, distances)
         final_loss, record, distances = best
 
         # failed = distances > min(JENGA_BLOCK_DIM)/8
@@ -256,11 +290,41 @@ def infer_block_locations(points):
     return records, predicted_blocks
 
 
+def simulate_layer_pointcloud(layer, total_points, noise=.001):
+    """
+    layer is a list of 3 blocks
+        None is no block
+    """
+    all_points = []
+    num_blocks = len([block for block in layer if block is not None])
+    count = 0
+    for i, block in enumerate(layer):
+        if block is not None:
+            points = int((count + 1)*total_points/num_blocks) - int(count*total_points/num_blocks)
+            distrib = [JENGA_BLOCK_DIM[0], JENGA_BLOCK_DIM[1], JENGA_BLOCK_DIM[0], JENGA_BLOCK_DIM[1]]
+            if i > 0 and layer[i - 1] is not None:
+                distrib[0] *= 0.02
+            if i == 2 and which_blocks == '101':
+                distrib[0] *= 0.15
+
+            if i < 2 and layer[i + 1] is not None:
+                distrib[2] *= 0.02
+            if i == 0 and which_blocks == '101':
+                distrib[2] *= 0.15
+
+            all_points.append(block_to_2d_point_cloud(block=block,
+                                                      noise=noise,
+                                                      points=points,
+                                                      distrib=distrib))
+            count += 1
+    return np.concatenate(all_points, axis=0)
+
+
 if __name__ == "__main__":
     seed(69420)
 
     # torch.autograd.set_detect_anomaly(True)
-
+    failures = 0
     for which_blocks in range(1, 8):
         # encoded blocks to include
         # on [1,7]
@@ -271,14 +335,18 @@ if __name__ == "__main__":
             which_blocks = '0' + which_blocks
         print('blocks:', which_blocks)
 
-        targets = [random_block(0, i, .001, .003) for i in range(3) if which_blocks[i] == '1']
-        points = torch.cat([torch.tensor(block_to_2d_point_cloud(block=target, noise=.001, points=100))
-                            for target in targets])
+        targets = [random_block(0, i, .001, .003) if which_blocks[i] == '1' else None for i in range(3)]
+
+        points=torch.tensor(simulate_layer_pointcloud(targets,
+                                                      total_points=100*which_blocks.count('1')))
+        targets = [target for target in targets if target is not None]
 
         records, predicted_blocks = infer_block_locations(points)
 
         print('prediced number:', predicted_blocks)
         print('actual number:', len(targets))
+        if len(targets) != predicted_blocks:
+            failures += 1
 
         if False:
             continue
@@ -339,4 +407,4 @@ if __name__ == "__main__":
             ani.save(os.path.join(save_folder, str(k) + '_blocks.gif'))
             # plt.show()
             plt.close()
-
+    print('FAILED', failures, 'times')
