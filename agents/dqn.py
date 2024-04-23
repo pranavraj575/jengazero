@@ -42,7 +42,7 @@ class DQN(nn.Module):
         super().__init__()
         self.nn_layers = nn.ModuleList()
         if activation is None:
-            activation=nn.ReLU
+            activation = nn.ReLU
         self.output_activation = output_activation
         for i in range(len(layers) - 1):
             self.nn_layers.append(nn.Linear(layers[i], layers[i + 1]))
@@ -264,7 +264,7 @@ class DQN_player(Agent):
         if agent_pairs is None:
             agent_pairs = [(self, self)]
 
-        for epoch in range(epochs-self.info['epochs_trained']):
+        for epoch in range(epochs - self.info['epochs_trained']):
             agent1, agent2 = agent_pairs[np.random.randint(len(agent_pairs))]
             add_training_data(self.buffer, agent1=agent1, agent2=agent2, skip_opponent_step=SKIP_OPPONENT_STEP)
             loss = self.optimize_step()
@@ -304,8 +304,8 @@ if __name__ == "__main__":
     from agents.determined import FastPick
     from agents.randy import Randy, SmartRandy
 
-    opponent=('random',Randy())
-    #opponent = ('smart_random', SmartRandy())
+    opponent = ('random', Randy())
+    # opponent = ('smart_random', SmartRandy())
 
     epochs = 50
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
