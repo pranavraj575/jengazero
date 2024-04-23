@@ -191,10 +191,13 @@ class DQN_player(Agent):
         non_final_mask = torch.tensor(tuple(map(lambda t: not t,
                                                 batch.terminal)), device=DEVICE, dtype=torch.bool)
         next_state_values = torch.zeros(batch_size, device=DEVICE)
-        with torch.no_grad():
-            next_state_values[non_final_mask] = torch.cat(
-                [self.tower_value(tower_from_array(arr), network=self.target_net)
-                 for arr in batch.next_state if arr is not None]).flatten()
+
+        if torch.sum(non_final_mask)>0:
+            # check if there are any non-terminal states
+            with torch.no_grad():
+                next_state_values[non_final_mask] = torch.cat(
+                    [self.tower_value(tower_from_array(arr), network=self.target_net)
+                     for arr in batch.next_state if arr is not None]).flatten()
         if not skip_opponent_step:
             # in this case, this is the opponent's move
             # our value will be the negative of this value

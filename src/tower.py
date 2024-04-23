@@ -332,18 +332,20 @@ class Tower:
         # return if it 'falls' i.e. if hull.find_simplex < 0
         return not point_in_hull(com, hull)
 
-    def log_prob_falls(self, scale=.001):
+    def log_prob_stable(self, scale=.001):
         """
-        computes log of probability that tower falls
+        computes log of probability that tower is stable
             sum across layers
                 (equivalent to just multiplying the probabilities)
+            could also try min across layers
+                (equivalent to probability that the least stable layer is stable)
         :return: log(prob)
         """
-        return sum(self.log_prob_falls_at_layer(L, scale=scale) for L in range(self.height() - 1))
+        return sum(self.log_prob_stable_at_layer(L, scale=scale) for L in range(self.height() - 1))
 
-    def log_prob_falls_at_layer(self, L, scale=.0005):
+    def log_prob_stable_at_layer(self, L, scale=.0005):
         """
-        computes log of probability that tower falls at layer L
+        computes log of probability that tower is stable at layer L
             probability is calculated by sigmoid of signed distance from the convex hull
             scaled by some value so that
         :param L: layer of tower (must be < self.height-1)
@@ -528,7 +530,7 @@ class Tower:
         """
         :param remove: (L,i) tuple, remove ith block from Lth level
         :param place: index of place action
-        :return: (Tower object with specified action taken, log prob of tower falling)
+        :return: (Tower object with specified action taken, log prob of tower being stable)
         note: remove must be in removes and place in places for (removes,places)=self.valid_moves()
         """
         removes, places = self.valid_moves_product()
@@ -537,7 +539,7 @@ class Tower:
         removed = self.remove_block(remove)
         placed = removed.place_block(place)
 
-        return placed, (removed.log_prob_falls() + placed.log_prob_falls())
+        return placed, (removed.log_prob_stable() + placed.log_prob_stable())
 
     # SAVING/OTHER
 
