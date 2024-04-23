@@ -138,7 +138,12 @@ def which_points_in_equations(points, eqs, tolerance=TOLERANCE):
     return dists <= tolerance
 
 
-def block_loss(blocks: [TorchBlock], points, weights=None, extra_loss=0.0, extra_distance_loss=0.0):
+def block_loss(blocks: [TorchBlock],
+               points,
+               weights=None,
+               extra_loss=0.0,
+               extra_distance_loss=0.0,
+               ):
     """
     loss calculation
     points is Nx2
@@ -149,7 +154,7 @@ def block_loss(blocks: [TorchBlock], points, weights=None, extra_loss=0.0, extra
     returns (loss, distance of each point to closest block line)
     """
     if weights is None:
-        weights=torch.ones(points.shape[0])
+        weights = torch.ones(points.shape[0])
     LARGE = 69
     # iterate over each block, find the closest distance of each point to the block
     # then take the min for each point
@@ -206,29 +211,37 @@ def block_loss(blocks: [TorchBlock], points, weights=None, extra_loss=0.0, extra
 
         distances_loss = 0.
 
-    loss = torch.mean(overall_best.values * weights) + extra_loss*overall_worst + extra_distance_loss*distances_loss
+    loss = torch.mean(overall_best.values*weights) + extra_loss*overall_worst + extra_distance_loss*distances_loss
 
     return loss, overall_best.values
 
 
-def infer_block_locations(points):
+def infer_block_locations(points,
+                          max_points=1000,
+                          ):
     """
     infers block numbers and positions from a 2d pointcloud
     :param points: N x 2 tensor of points to fit
+
+    :param max_points: the maximum number of points to consider
+        if larger, uses a random subset
 
     returns (dict(num_blocks -> (loss, solution, point distances, parameter history), predicted num_blocks)
         solution is a list of block vectors
     """
 
+    if len(points) > max_points:
+        points = points[torch.randperm(len(points))[:max_points]]
+
     assisted = 200
     normal_loss = 100
     range_blocks = range(1, 4)
 
-    dist_matrix = torch.linalg.norm(torch.unsqueeze(points,0) - torch.unsqueeze(points,1), dim=-1)
-    inv_sq_dist_matrix=torch.pow(dist_matrix+torch.eye(len(dist_matrix)),-2)-torch.eye(len(dist_matrix))
-    densities = torch.sum(inv_sq_dist_matrix,dim=1)/torch.pi
-    weights=1/densities
-    norm_weights=weights/torch.sum(weights)
+    dist_matrix = torch.linalg.norm(torch.unsqueeze(points, 0) - torch.unsqueeze(points, 1), dim=-1)
+    inv_sq_dist_matrix = torch.pow(dist_matrix + torch.eye(len(dist_matrix)), -2) - torch.eye(len(dist_matrix))
+    densities = torch.sum(inv_sq_dist_matrix, dim=1)/torch.pi
+    weights = 1/densities
+    norm_weights = weights/torch.sum(weights)
 
     records = dict()
     for num_blocks in range_blocks:
@@ -337,8 +350,10 @@ if __name__ == "__main__":
 
         targets = [random_block(0, i, .001, .003) if which_blocks[i] == '1' else None for i in range(3)]
 
-        points=torch.tensor(simulate_layer_pointcloud(targets,
-                                                      total_points=100*which_blocks.count('1')))
+        points = torch.tensor(simulate_layer_pointcloud(targets,
+                                                        total_points=100*which_blocks.count('1'),
+                                                        noise=.001
+                                                        ))
         targets = [target for target in targets if target is not None]
 
         records, predicted_blocks = infer_block_locations(points)
@@ -371,7 +386,7 @@ if __name__ == "__main__":
             record = records[k][-1]
 
             fig, ax = plt.subplots()
-            scat = ax.scatter(points[:, 0], points[:, 1])
+            scat = ax.scatter(points[:, 0], points[:, 1], s=10, color='black', alpha=.2)
             lines = [ax.plot(points[:, 0], points[:, 1])[0] for _ in record[0]]
 
             xbnd = list(plt.xlim())

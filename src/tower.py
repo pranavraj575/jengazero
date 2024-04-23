@@ -341,7 +341,7 @@ class Tower:
         """
         return sum(self.log_prob_falls_at_layer(L, scale=scale) for L in range(self.height() - 1))
 
-    def log_prob_falls_at_layer(self, L, scale=.001):
+    def log_prob_falls_at_layer(self, L, scale=.0005):
         """
         computes log of probability that tower falls at layer L
             probability is calculated by sigmoid of signed distance from the convex hull
@@ -510,7 +510,7 @@ class Tower:
                 angle_std=self.angle_std,
             )
 
-    def play_move(self, remove, place):
+    def play_move_deterministic(self, remove, place):
         """
         :param remove: (L,i) tuple, remove ith block from Lth level
         :param place: index of place action
@@ -523,6 +523,21 @@ class Tower:
         removed = self.remove_block(remove)
         placed = removed.place_block(place)
         return placed, (removed.deterministic_falls() or placed.deterministic_falls())
+
+    def play_move_log_probabilistic(self, remove, place):
+        """
+        :param remove: (L,i) tuple, remove ith block from Lth level
+        :param place: index of place action
+        :return: (Tower object with specified action taken, log prob of tower falling)
+        note: remove must be in removes and place in places for (removes,places)=self.valid_moves()
+        """
+        removes, places = self.valid_moves_product()
+        if not (remove in removes and place in places):
+            raise Exception("NOT VALID MOVE: " + str(remove) + ',' + str(place))
+        removed = self.remove_block(remove)
+        placed = removed.place_block(place)
+
+        return placed, (removed.log_prob_falls() + placed.log_prob_falls())
 
     # SAVING/OTHER
 

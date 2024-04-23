@@ -40,11 +40,12 @@ def outcome(agents: List[Agent], tower: Tower = None, keep_history=True):
     while tower.has_valid_moves():
         agent = agents[turn%len(agents)]
         remove, place = agent.pick_move(tower)
-        new_tower, fell = tower.play_move(remove=remove, place=place)
+        new_tower, log_prob = tower.play_move_log_probabilistic(remove=remove, place=place)
+        fell=np.random.random()<np.exp(log_prob)
         result = 0
         if fell:
             result = -1
-        if not new_tower.has_valid_moves():
+        elif not new_tower.has_valid_moves():
             result = 1
 
         if keep_history:
