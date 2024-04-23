@@ -308,13 +308,21 @@ if __name__ == "__main__":
     # opponent = ('smart_random', SmartRandy())
 
     epochs = 50
+    hidden_layers=[256]
+    hidden_str=''
+    for size in hidden_layers:
+        hidden_str+='_'+str(size)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
     save_path = os.path.join(DIR, 'data',
-                             'dqn_against_' + opponent[0] + '_' + str(epochs) + '_epochs_towersize_' + str(
-                                 INITIAL_SIZE))
+                             'dqn_against_' +
+                              opponent[0] + '_' + 
+                             str(epochs) + 
+                             '_epochs_towersize_' + 
+                             str(                                 INITIAL_SIZE)+
+                             '_hidden_layers'+hidden_str)
     print('saving to', save_path)
     seed(42069)
-    player = DQN_player([256])
+    player = DQN_player(hidden_layers=hidden_layers)
     agent_pairs = [(player, player), (player, opponent[1])]
     if os.path.exists(os.path.join(save_path, 'info.pkl')):
         print('loading initial', save_path)
