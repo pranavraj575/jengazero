@@ -192,7 +192,7 @@ class DQN_player(Agent):
                                                 batch.terminal)), device=DEVICE, dtype=torch.bool)
         next_state_values = torch.zeros(batch_size, device=DEVICE)
 
-        if torch.sum(non_final_mask)>0:
+        if torch.sum(non_final_mask) > 0:
             # check if there are any non-terminal states
             with torch.no_grad():
                 next_state_values[non_final_mask] = torch.cat(
@@ -245,7 +245,7 @@ class DQN_player(Agent):
             else:
                 agents = [agent, self]
                 idx = 1
-            loser, _, _ = outcome(agents)
+            loser, _, hist = outcome(agents)
             if loser == idx:
                 lost += 1
 
@@ -266,6 +266,11 @@ class DQN_player(Agent):
         EPS_DECAY = 1000
         if agent_pairs is None:
             agent_pairs = [(self, self)]
+
+        if self.info['epochs_trained']==0 and testing_agent is not None:
+            win_rate = self.test_against(testing_agent)
+            print('epoch:', self.info['epochs_trained'], 'win_rate:', win_rate)
+            self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
 
         for epoch in range(epochs - self.info['epochs_trained']):
             agent1, agent2 = agent_pairs[np.random.randint(len(agent_pairs))]
@@ -308,21 +313,21 @@ if __name__ == "__main__":
     from agents.randy import Randy, SmartRandy
 
     opponent = ('random', Randy())
-    # opponent = ('smart_random', SmartRandy())
+    opponent = ('smart_random', SmartRandy())
 
-    epochs = 50
-    hidden_layers=[256]
-    hidden_str=''
+    epochs = 200
+    hidden_layers = [256]
+    hidden_str = ''
     for size in hidden_layers:
-        hidden_str+='_'+str(size)
+        hidden_str += '_' + str(size)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
     save_path = os.path.join(DIR, 'data',
                              'dqn_against_' +
-                              opponent[0] + '_' + 
-                             str(epochs) + 
-                             '_epochs_towersize_' + 
-                             str(                                 INITIAL_SIZE)+
-                             '_hidden_layers'+hidden_str)
+                             opponent[0] + '_' +
+                             str(epochs) +
+                             '_epochs_towersize_' +
+                             str(INITIAL_SIZE) +
+                             '_hidden_layers' + hidden_str)
     print('saving to', save_path)
     seed(42069)
     player = DQN_player(hidden_layers=hidden_layers)
