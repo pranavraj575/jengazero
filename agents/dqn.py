@@ -147,6 +147,24 @@ class DQN_player(Agent):
         self.info = pickle.load(f)
         f.close()
 
+    def load_last_checkpoint(self, path):
+        """
+        loads most recent checkpoint
+            assumes folder name is epoch number
+        """
+        path=os.path.join(path,'checkpoints')
+        best = -1
+        for folder in os.listdir(path):
+            check = os.path.join(path, folder)
+            if os.path.isdir(check) and folder.isnumeric():
+                best = max(best, int(folder))
+        if best < 0:
+            # checkpoint not found
+            return False
+
+        self.load_all(os.path.join(path, str(best)))
+        return True
+
     def tower_value(self, tower: Tower, network=None):
         """
         max of Q values over possible actions at Tower
@@ -267,7 +285,7 @@ class DQN_player(Agent):
         if agent_pairs is None:
             agent_pairs = [(self, self)]
 
-        if self.info['epochs_trained']==0 and testing_agent is not None:
+        if self.info['epochs_trained'] == 0 and testing_agent is not None:
             win_rate = self.test_against(testing_agent)
             print('epoch:', self.info['epochs_trained'], 'win_rate:', win_rate)
             self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
@@ -335,6 +353,10 @@ if __name__ == "__main__":
     if os.path.exists(os.path.join(save_path, 'info.pkl')):
         print('loading initial', save_path)
         player.load_all(save_path)
+    elif os.path.exists(os.path.join(save_path, 'checkpoints')):
+        print('loading checkpoint', save_path)
+        player.load_last_checkpoint(save_path)
+        print('last checkpoint:', player.info['epochs_trained'], 'epochs trained')
     else:
         print('getting games in buffer')
         player.grab_fixed_amount(128, agent_pairs=[(opponent[1], opponent[1]), ])
