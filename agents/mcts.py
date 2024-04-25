@@ -7,6 +7,7 @@ import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
+from agent import Agent
 from src.tower import Tower
 
 class Node:
@@ -76,41 +77,47 @@ class Node:
             self.parent.backpropagate(-score)
 
 def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
-    """
-    Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
+        """
+        Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
 
-    Args:
-        root_state: The initial state of the problem or game.
-        iterations: The number of iterations to run the search.
-        exploration_constant: The exploration constant (default: sqrt(2)).
-        exploitation_constant: The exploitation constant (default: 1.0).
+        Args:
+            root_state: The initial state of the problem or game.
+            iterations: The number of iterations to run the search.
+            exploration_constant: The exploration constant (default: sqrt(2)).
+            exploitation_constant: The exploitation constant (default: 1.0).
 
-    Returns:
-        The best action to take based on the MCTS algorithm.
-    """
-    # print('searching')
-    root_node = Node(root_state, exploration_constant)
-    for i in range(iterations):
-        # if (i+1) % 100 == 0:
-        #     print(f'iteration {i+1}')
-        node = root_node
-        while random.random() <= math.exp(node.state.log_stable_prob):
-            if node.state.num_legal_moves == 0:
-                node.state.is_terminal = True
-                break
-            if not node.is_fully_expanded():
-                next_move = node.state.moves[node.last_child_idx]
-                node.last_child_idx += 1
-                node = node.add_child(node.state.make_move(next_move))
-            else:
-                node = node.select_child()
-                # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
-        simulation_result = node.state.evaluate()
-        node.state.is_terminal = False
-        node.backpropagate(simulation_result)
+        Returns:
+            The best action to take based on the MCTS algorithm.
+        """
+        # print('searching')
+        root_node = Node(root_state, exploration_constant)
+        for i in range(iterations):
+            # if (i+1) % 100 == 0:
+            #     print(f'iteration {i+1}')
+            node = root_node
+            while random.random() <= math.exp(node.state.log_stable_prob):
+                if node.state.num_legal_moves == 0:
+                    node.state.is_terminal = True
+                    break
+                if not node.is_fully_expanded():
+                    next_move = node.state.moves[node.last_child_idx]
+                    node.last_child_idx += 1
+                    node = node.add_child(node.state.make_move(next_move))
+                else:
+                    node = node.select_child()
+                    # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
+            simulation_result = node.state.evaluate()
+            node.state.is_terminal = False
+            node.backpropagate(simulation_result)
 
-    best_child = max(root_node.children, key=lambda x: x.visits)
-    return best_child.state.last_move, root_node
+        best_child = max(root_node.children, key=lambda x: x.visits)
+        return best_child.state.last_move, root_node
+
+class MCTS_player(Agent):
+    def pick_move(self, tower: Tower):
+        state = State(tower)
+        best_move, _ = mcts_search(state, 1000)
+        return best_move
 
 class State:
     def __init__(self, tower=None, parent=None, last_move=None, log_stable_prob=0.0):
