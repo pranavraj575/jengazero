@@ -18,7 +18,6 @@ class Node:
         self.last_child_idx = 0
         self.visits = 0
         self.score = 0.0
-        self.is_terminal = False
 
     def is_fully_expanded(self):
         """
@@ -95,16 +94,19 @@ def mcts_search(root_state, iterations, exploration_constant=math.sqrt(2), explo
         # if (i+1) % 100 == 0:
         #     print(f'iteration {i+1}')
         node = root_node
-        while node.state.num_legal_moves > 0 and random.random() <= math.exp(node.state.log_stable_prob):
+        while random.random() <= math.exp(node.state.log_stable_prob):
+            if node.state.num_legal_moves == 0:
+                node.state.is_terminal = True
+                break
             if not node.is_fully_expanded():
                 next_move = node.state.moves[node.last_child_idx]
                 node.last_child_idx += 1
                 node = node.add_child(node.state.make_move(next_move))
-            node = node.select_child()
+            else:
+                node = node.select_child()
                 # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
-        node.is_terminal = True
         simulation_result = node.state.evaluate()
-        node.is_terminal = False
+        node.state.is_terminal = False
         node.backpropagate(simulation_result)
 
     best_child = max(root_node.children, key=lambda x: x.visits)
@@ -121,22 +123,28 @@ class State:
         self.num_legal_moves = len(self.moves)
         self.last_move = last_move
         self.log_stable_prob = log_stable_prob
+        self.is_terminal = False
 
     def make_move(self, move):
         new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
         return State(tower=new_tower, parent=self, last_move=move, log_stable_prob=log_stable_prob)
     
     def evaluate(self):
-        if self.num_legal_moves == 0:
+        if self.is_terminal:
             return 1
         return -1 # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
 
 # Example usage with a custom State class
 if __name__ == "__main__":
     state = State()
+    state = state.make_move(state.moves[0])
     player = 0
+    is_terminal = False
     print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
     while random.random() <= math.exp(state.log_stable_prob):
+        if state.num_legal_moves == 0:
+            is_terminal = True
+            break
         next_move, node = mcts_search(state, 1000, math.sqrt(2))
         state = state.make_move(next_move)
         player = 1-player
@@ -144,6 +152,9 @@ if __name__ == "__main__":
             exploitation_term = child.score / child.visits
             exploration_term = math.sqrt(2 * math.log(node.visits) / child.visits)
             score = exploitation_term + node.exploration_constant * exploration_term
-            print(f"{child.state.tower}\t score of {score:.4f}")
+            print(f"{child.state.tower}\texploitation-term={exploitation_term:.4f}\texploration-term={exploration_term:.4f}")
         print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
-    print(f'player {player} won!')
+    if is_terminal:
+        print(f'player {1-player} won!')
+    else:
+        print(f'player {player} won!')
