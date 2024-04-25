@@ -54,7 +54,7 @@ class Node:
 
         for child in self.children:
             exploitation_term = child.score / child.visits
-            exploration_term = math.sqrt(2 * math.log(self.visits) / child.visits)
+            exploration_term = math.sqrt(math.log(self.visits) / child.visits)
             score = exploitation_term + self.exploration_constant * exploration_term
             if score > best_score:
                 best_child = child
@@ -75,7 +75,7 @@ class Node:
         if self.parent is not None:
             self.parent.backpropagate(-score)
 
-def mcts_search(root_state, iterations, exploration_constant=math.sqrt(2), exploitation_constant=1.0):
+def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
     """
     Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
 
@@ -137,7 +137,6 @@ class State:
 # Example usage with a custom State class
 if __name__ == "__main__":
     state = State()
-    state = state.make_move(state.moves[0])
     player = 0
     is_terminal = False
     print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
@@ -145,14 +144,14 @@ if __name__ == "__main__":
         if state.num_legal_moves == 0:
             is_terminal = True
             break
-        next_move, node = mcts_search(state, 1000, math.sqrt(2))
+        next_move, node = mcts_search(state, 1000, 2*math.sqrt(2))
         state = state.make_move(next_move)
         player = 1-player
         for child in node.children:
             exploitation_term = child.score / child.visits
-            exploration_term = math.sqrt(2 * math.log(node.visits) / child.visits)
-            score = exploitation_term + node.exploration_constant * exploration_term
-            print(f"{child.state.tower}\texploitation-term={exploitation_term:.4f}\texploration-term={exploration_term:.4f}")
+            exploration_term = node.exploration_constant * math.sqrt(math.log(node.visits) / child.visits)
+            score = exploitation_term + exploration_term
+            print(f"{child.state.tower}\texploitation-term={exploitation_term:.4f} \texploration-term={exploration_term:.4f}\tscore={score:.4f}")
         print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
     if is_terminal:
         print(f'player {1-player} won!')

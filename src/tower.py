@@ -11,7 +11,7 @@ JENGA_BLOCK_SPACING = .005  # in meters
 TOWER_DIAMETER = 2*JENGA_BLOCK_SPACING + 3*JENGA_BLOCK_DIM[1]  # theoretical size of a layer
 
 WOOD_DENSITY = 0.5  # kg/m^3
-INITIAL_SIZE = 2  # number of levels in initial tower
+INITIAL_SIZE = 4  # number of levels in initial tower
 
 TOLERANCE = 1e-10
 
