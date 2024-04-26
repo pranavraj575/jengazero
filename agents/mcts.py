@@ -135,7 +135,7 @@ def random_playout(root_state: State, trials=1, depth_limit=float('inf')):
 
 
 class Node:
-    def __init__(self, state, exploration_constant=math.sqrt(2), parent=None):
+    def __init__(self, state, exploration_constant=2*math.sqrt(2), parent=None):
         self.state = state
         self.exploration_constant = exploration_constant
         self.parent = parent
