@@ -75,14 +75,12 @@ class BasicState(State):
             # this is if the tower has no moves left
             return 1
         else:
+            return random_playout(root_state=self,
+                                  trials=params.get('trials', 1),
+                                  depth_limit=params.get('depth_limit',float('inf')))
 
-            return random_playout(root_state=self, trials=params.get('trials', 1))
-        """
-            stable_prob = math.exp(self.log_stable_prob)
-            return -1*(1 - stable_prob) + 0*stable_prob
-        """
 
-def random_playout(root_state: State, trials=1):
+def random_playout(root_state: State, trials=1, depth_limit=float('inf')):
     """
     assumes root_state does not fall
     preform a random playout from the root state
@@ -91,12 +89,16 @@ def random_playout(root_state: State, trials=1):
     Args:
         root_state: initial state
         trials: number of trials to take from root (default 1)
+        depth_limit: depth to run to before returning 0
     Return:
-        in general, runs eval on the termainal state and propegates it back to root state
+        1 if ending at this state is always a win
+        -1 if ending at this state is always a loss
         takes average if trials>1
     """
     if root_state.num_legal_moves == 0:
         return 1
+    if depth_limit <= 0:
+        return 0
     score = 0
     for trial in range(trials):
         # now we consider the next state
@@ -111,7 +113,7 @@ def random_playout(root_state: State, trials=1):
             score += -1
             continue
         # otherwise we now have to evaluate the next state
-        next_outcome = random_playout(next_state, trials=1)
+        next_outcome = random_playout(next_state, trials=1, depth_limit=depth_limit - 1)
         score += -next_outcome
     return score/trials
 
@@ -190,6 +192,7 @@ class Node:
             # we are a leaf node
             return 1
         return max(child.tree_depth() for child in self.children) + 1
+
 
 def mcts_search(root_state,
                 iterations,
