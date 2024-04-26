@@ -82,6 +82,39 @@ class BasicState(State):
             return -1*(1 - stable_prob) + 0*stable_prob
         """
 
+def random_playout(root_state: State, trials=1):
+    """
+    assumes root_state does not fall
+    preform a random playout from the root state
+        estimates how good root_state is to END at
+    takes into account the probability of the root state falling
+    Args:
+        root_state: initial state
+        trials: number of trials to take from root (default 1)
+    Return:
+        in general, runs eval on the termainal state and propegates it back to root state
+        takes average if trials>1
+    """
+    if root_state.num_legal_moves == 0:
+        return 1
+    score = 0
+    for trial in range(trials):
+        # now we consider the next state
+        next_move = root_state.moves[random.randint(0, root_state.num_legal_moves - 1)]
+        next_state = root_state.make_move(next_move)
+        if random.random() > math.exp(next_state.log_stable_prob):
+            # next tower fell, so the player that ended at root_state won
+            score += 1
+            continue
+        if next_state.num_legal_moves == 0:
+            # no legal moves here, losing state for player that ended at root_state
+            score += -1
+            continue
+        # otherwise we now have to evaluate the next state
+        next_outcome = random_playout(next_state, trials=1)
+        score += -next_outcome
+    return score/trials
+
 
 class Node:
     def __init__(self, state, exploration_constant=math.sqrt(2), parent=None):
@@ -157,41 +190,6 @@ class Node:
             # we are a leaf node
             return 1
         return max(child.tree_depth() for child in self.children) + 1
-
-
-def random_playout(root_state: State, trials=1):
-    """
-    assumes root_state does not fall
-    preform a random playout from the root state
-        estimates how good root_state is to END at
-    takes into account the probability of the root state falling
-    Args:
-        root_state: initial state
-        trials: number of trials to take from root (default 1)
-    Return:
-        in general, runs eval on the termainal state and propegates it back to root state
-        takes average if trials>1
-    """
-    if root_state.num_legal_moves == 0:
-        return 1
-    score = 0
-    for trial in range(trials):
-        # now we consider the next state
-        next_move = root_state.moves[random.randint(0, root_state.num_legal_moves - 1)]
-        next_state = root_state.make_move(next_move)
-        if random.random() > math.exp(next_state.log_stable_prob):
-            # next tower fell, so the player that ended at root_state won
-            score += 1
-            continue
-        if next_state.num_legal_moves == 0:
-            # no legal moves here, losing state for player that ended at root_state
-            score += -1
-            continue
-        # otherwise we now have to evaluate the next state
-        next_outcome = random_playout(next_state, trials=1)
-        score += -next_outcome
-    return score/trials
-
 
 def mcts_search(root_state,
                 iterations,
