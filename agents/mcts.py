@@ -12,12 +12,18 @@ from src.tower import Tower
 
 
 class State:
-    def __init__(self, tower=None, parent=None, last_move=None, log_stable_prob=0.0):
+    """
+    what a state must implement
+    added this structure so we can change evaluation function for alphazero
+    """
+
+    def __init__(self, tower, parent, last_move, log_stable_prob):
         if tower is None:
             self.tower = Tower(pos_std=0.001, angle_std=0.001)
         else:
             self.tower = tower
         self.parent = parent
+        self.depth = 0 if parent is None else parent.depth + 1
         self.moves = self.tower.valid_moves()
         random.shuffle(self.moves)
         self.num_legal_moves = len(self.moves)
@@ -25,10 +31,34 @@ class State:
         self.log_stable_prob = log_stable_prob
 
     def make_move(self, move):
-        new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
-        return State(tower=new_tower, parent=self, last_move=move, log_stable_prob=log_stable_prob)
+        """
+        returns state resulting from the move
+        """
+        raise NotImplementedError
 
-    def evaluate(self, fell=False, eval_function=None):
+    def evaluate(self, fell):
+        """
+        returns a scalar evaluating the state
+        this evaluation measures how good this state is to END in
+        """
+        raise NotImplementedError
+
+
+class BasicState(State):
+    def __init__(self, tower=None, parent=None, last_move=None, log_stable_prob=0.0):
+        super().__init__(tower=tower,
+                         parent=parent,
+                         last_move=last_move,
+                         log_stable_prob=log_stable_prob)
+
+    def make_move(self, move):
+        new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
+        return BasicState(tower=new_tower,
+                          parent=self,
+                          last_move=move,
+                          log_stable_prob=log_stable_prob)
+
+    def evaluate(self, fell=False):
         """
         this evaluation measures how good this state is to END in
             i.e. if player i plays a move that leads to this state,
@@ -39,14 +69,15 @@ class State:
         if fell:
             # this is if the tower fell
             return -1
-        if self.num_legal_moves == 0:
+        elif self.num_legal_moves == 0:
             # this is if the tower has no moves left
             return 1
-        if eval_function is None:
+        else:
             return 0
-        if eval_function=='stability':
-            stable_prob=math.exp(self.log_stable_prob)
-            return -1*(1-stable_prob)+0*stable_prob
+        """
+            stable_prob = math.exp(self.log_stable_prob)
+            return -1*(1 - stable_prob) + 0*stable_prob
+        """
 
 
 class Node:
@@ -57,7 +88,7 @@ class Node:
         self.children = []
         self.last_child_idx = 0
         self.visits = 0
-        self.score = 0.0
+        self.cum_score = 0.0
 
     def is_fully_expanded(self):
         """
@@ -93,7 +124,7 @@ class Node:
         best_score = -math.inf
 
         for child in self.children:
-            exploitation_term = child.score/child.visits
+            exploitation_term = child.get_exploit_score()
             exploration_term = math.sqrt(math.log(self.visits)/child.visits)
             score = exploitation_term + self.exploration_constant*exploration_term
             if score > best_score:
@@ -101,6 +132,9 @@ class Node:
                 best_score = score
 
         return best_child
+
+    def get_exploit_score(self):
+        return self.cum_score/max(1, self.visits)
 
     def backpropagate(self, score):
         """
@@ -110,7 +144,7 @@ class Node:
             score: The score obtained from the simulation.
         """
         self.visits += 1
-        self.score += score
+        self.cum_score += score
 
         if self.parent is not None:
             self.parent.backpropagate(-score)
@@ -158,7 +192,12 @@ def random_playout(root_state: State, depth=float('inf'), trials=1):
     return score/trials
 
 
-def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2), depth=float('inf')):
+def mcts_search(root_state,
+                iterations,
+                exploration_constant=2*math.sqrt(2),
+                depth=float('inf'),
+                random_trials=1
+                ):
     """
     Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
     assumes root_state is always non terminal
@@ -168,7 +207,8 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2), dep
         root_state: The initial state of the problem or game.
         iterations: The number of iterations to run the search.
         exploration_constant: The exploration constant (default: sqrt(2)).
-        exploitation_constant: The exploitation constant (default: 1.0).
+        depth: depth to randomly explore from a leaf (default infinite)
+        random_trials: number of random trials to explore from a leaf (default 1)
 
     Returns:
         The best action to take based on the MCTS algorithm.
@@ -200,31 +240,51 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2), dep
             simulation_result = node.state.evaluate(fell=(termination == 'fell'))
             node.backpropagate(simulation_result)
         elif termination == 'unexplored child node':
-            simulation_result = random_playout(node.state, depth=depth)
+            simulation_result = random_playout(node.state, depth=depth, trials=random_trials)
             node.backpropagate(simulation_result)
 
-    best_child = max(root_node.children, key=lambda x: x.score)  # TODO: should this be x.score or x.visits
+    best_child = max(root_node.children, key=lambda x: x.get_exploit_score())
     return best_child.state.last_move, root_node
 
 
 class MCTS_player(Agent):
-    def __init__(self, num_iterations=1000):
+    def __init__(self,
+                 num_iterations=1000,
+                 exploration_constant=2*math.sqrt(2),
+                 depth_limit=float('inf'),
+                 random_trials=1,
+                 ):
+        """
+        player for MCTS
+        Args:
+            num_iterations: number of iterations to run MCTS search
+            exploration_constant: exploration constant to use during MCTS search
+            depth_limit: depth limit to use for MCTS search
+            random_trials: number of random trials to use to evalueate a leaf in MCTS search
+        """
         super().__init__()
         self.num_iterations = num_iterations
+        self.exploration_constant = exploration_constant
+        self.depth_limit = depth_limit
+        self.random_trials = random_trials
 
     def pick_move(self, tower: Tower):
-        state = State(tower)
-        best_move, _ = mcts_search(state, self.num_iterations)
+        state = BasicState(tower)
+        best_move, _ = mcts_search(root_state=state,
+                                   iterations=self.num_iterations,
+                                   exploration_constant=self.exploration_constant,
+                                   depth=self.depth_limit,
+                                   random_trials=self.random_trials)
         return best_move
 
 
 # Example usage with a custom State class
 if __name__ == "__main__":
-    state = State()
+    state = BasicState()
     player = 0
     is_terminal = False
     print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
-    num_moves=0
+    num_moves = 0
     while random.random() <= math.exp(state.log_stable_prob):
         if state.num_legal_moves == 0:
             is_terminal = True
@@ -233,13 +293,13 @@ if __name__ == "__main__":
         state = state.make_move(next_move)
         player = 1 - player
         for child in node.children:
-            exploitation_term = child.score/child.visits
+            exploitation_term = child.get_exploit_score()
             exploration_term = node.exploration_constant*math.sqrt(math.log(node.visits)/child.visits)
             score = exploitation_term + exploration_term
             print(
                 f"{child.state.tower}\texploitation-term={exploitation_term:.4f} \texploration-term={exploration_term:.4f}\tscore={score:.4f}")
         print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
-        num_moves+=1
+        num_moves += 1
     if is_terminal:
         print(f'player {1 - player} won!')
     else:
