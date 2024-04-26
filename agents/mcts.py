@@ -132,7 +132,7 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
         node = root_node
         termination = None
         while True:
-            if random.random() <= math.exp(node.state.log_stable_prob):
+            if random.random() > math.exp(node.state.log_stable_prob):
                 termination = 'fell'
                 break
             if node.state.num_legal_moves == 0:
