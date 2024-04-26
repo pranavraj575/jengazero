@@ -1,8 +1,8 @@
 from src.agent import *
-import torch.nn as nn
-import torch.nn.functional as F
 from agents.replay_buffer import *
 from src.utils import *
+from src.networks import FFNetwork
+import torch.nn as nn
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,30 +32,16 @@ def featurize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):
 FEATURESIZE = 1 + INITIAL_SIZE*3*2 + INITIAL_SIZE*3*3
 
 
-class DQN(nn.Module):
+class DQN(FFNetwork):
     def __init__(self, layers, activation=None, output_activation=None):
         """
+        LAYERS INCLUDES INPUT DIMENSION
         :param layers: list of ints, dim of layers in the network
         :param activation: activation before each hidden layer
         :param output_activation: activation before output (None if no activation)
         """
-        super().__init__()
-        self.nn_layers = nn.ModuleList()
-        if activation is None:
-            activation = nn.ReLU
-        self.output_activation = output_activation
-        for i in range(len(layers) - 1):
-            self.nn_layers.append(nn.Linear(layers[i], layers[i + 1]))
-            self.nn_layers.append(activation())
-        self.nn_layers.append(nn.Linear(layers[-1], 1))
+        super().__init__(layers+[1],activation=activation,output_activation=output_activation)
 
-    def forward(self, x):
-        # return self.linear_relu_stack(x)
-        for layer in self.nn_layers:
-            x = layer(x)
-        if self.output_activation is not None:
-            x = self.output_activation(x)
-        return x
 
 
 SKIP_OPPONENT_STEP = False

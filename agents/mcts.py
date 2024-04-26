@@ -36,12 +36,31 @@ class State:
         """
         raise NotImplementedError
 
-    def evaluate(self, fell):
+    def evaluate(self, fell, params):
         """
         returns a scalar evaluating the state
         this evaluation measures how good this state is to END in
+            i.e. if player i plays a move that leads to this state,
+                return 1 if player i will win and -1 if lost
+            if this tower has no valid moves, the player that moves to this tower will win (as next player has no moves)
+            if this tower falls, the player that moves to this tower will lose
         """
-        raise NotImplementedError
+        if fell:
+            # this is if the tower fell
+            return -1
+        elif self.num_legal_moves == 0:
+            # this is if the tower has no moves left
+            return 1
+        else:
+            # needs to be implemented in subclasses
+            return None
+
+    def policy(self, move, params):
+        """
+        returns the probaility of taking move according to the internal policy
+        default is 1 (since multiplying by a constant does nothing
+        """
+        return 1
 
 
 class BasicState(State):
@@ -58,7 +77,7 @@ class BasicState(State):
                           last_move=move,
                           log_stable_prob=log_stable_prob)
 
-    def evaluate(self, fell=False, params=None):
+    def evaluate(self, fell, params=None):
         """
         this evaluation measures how good this state is to END in
             i.e. if player i plays a move that leads to this state,
@@ -66,18 +85,15 @@ class BasicState(State):
             if this tower has no valid moves, the player that moves to this tower will win (as next player has no moves)
             if this tower falls, the player that moves to this tower will lose
         """  # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
+        easy_result = super().evaluate(fell=fell, params=params)
+        if easy_result is not None:
+            return easy_result
         if params is None:
             params = dict()
-        if fell:
-            # this is if the tower fell
-            return -1
-        elif self.num_legal_moves == 0:
-            # this is if the tower has no moves left
-            return 1
-        else:
-            return random_playout(root_state=self,
-                                  trials=params.get('trials', 1),
-                                  depth_limit=params.get('depth_limit',float('inf')))
+
+        return random_playout(root_state=self,
+                              trials=params.get('trials', 1),
+                              depth_limit=params.get('depth_limit', float('inf')))
 
 
 def random_playout(root_state: State, trials=1, depth_limit=float('inf')):
@@ -151,10 +167,11 @@ class Node:
         self.children.append(child)
         return child
 
-    def select_child(self):
+    def select_child(self, params=None):
         """
         Select a child node based on the UCB1 formula.
-
+        Args:
+            params: params to give state.policy
         Returns:
             Node: The selected child node.
         """
@@ -164,7 +181,10 @@ class Node:
         for child in self.children:
             exploitation_term = child.get_exploit_score()
             exploration_term = math.sqrt(math.log(self.visits)/child.visits)
-            score = exploitation_term + self.exploration_constant*exploration_term
+            move_made = child.state.last_move
+            policy_prob = self.state.policy(move_made, params=params)
+
+            score = exploitation_term + self.exploration_constant*policy_prob*exploration_term
             if score > best_score:
                 best_child = child
                 best_score = score
@@ -208,7 +228,7 @@ def mcts_search(root_state,
         root_state: The initial state of the problem or game.
         iterations: The number of iterations to run the search.
         exploration_constant: The exploration constant (default: sqrt(2)).
-        params: params to give evaluate
+        params: params to give evaluate and select_child
 
     Returns:
         The best action to take based on the MCTS algorithm.
@@ -228,7 +248,7 @@ def mcts_search(root_state,
                 termination = 'unexplored child node'
                 break
             else:
-                node = node.select_child()
+                node = node.select_child(params=params)
                 # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
             if random.random() > math.exp(node.state.log_stable_prob):
                 termination = 'fell'
