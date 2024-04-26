@@ -11,6 +11,10 @@ class Agent:
         pass
 
     def pick_move(self, tower: Tower):
+        """
+        returns a move ((Layer, index_remove), index_place)
+        :param tower: the tower to evalutate
+        """
         raise NotImplementedError
 
 

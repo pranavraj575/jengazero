@@ -7,8 +7,9 @@ import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
-from agent import Agent
+from src.agent import Agent, outcome
 from src.tower import Tower
+
 
 class Node:
     def __init__(self, state, exploration_constant=math.sqrt(2), parent=None):
@@ -54,9 +55,9 @@ class Node:
         best_score = -math.inf
 
         for child in self.children:
-            exploitation_term = child.score / child.visits
-            exploration_term = math.sqrt(math.log(self.visits) / child.visits)
-            score = exploitation_term + self.exploration_constant * exploration_term
+            exploitation_term = child.score/child.visits
+            exploration_term = math.sqrt(math.log(self.visits)/child.visits)
+            score = exploitation_term + self.exploration_constant*exploration_term
             if score > best_score:
                 best_child = child
                 best_score = score
@@ -76,48 +77,55 @@ class Node:
         if self.parent is not None:
             self.parent.backpropagate(-score)
 
+
 def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
-        """
-        Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
+    """
+    Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
 
-        Args:
-            root_state: The initial state of the problem or game.
-            iterations: The number of iterations to run the search.
-            exploration_constant: The exploration constant (default: sqrt(2)).
-            exploitation_constant: The exploitation constant (default: 1.0).
+    Args:
+        root_state: The initial state of the problem or game.
+        iterations: The number of iterations to run the search.
+        exploration_constant: The exploration constant (default: sqrt(2)).
+        exploitation_constant: The exploitation constant (default: 1.0).
 
-        Returns:
-            The best action to take based on the MCTS algorithm.
-        """
-        # print('searching')
-        root_node = Node(root_state, exploration_constant)
-        for i in range(iterations):
-            # if (i+1) % 100 == 0:
-            #     print(f'iteration {i+1}')
-            node = root_node
-            while random.random() <= math.exp(node.state.log_stable_prob):
-                if node.state.num_legal_moves == 0:
-                    node.state.is_terminal = True
-                    break
-                if not node.is_fully_expanded():
-                    next_move = node.state.moves[node.last_child_idx]
-                    node.last_child_idx += 1
-                    node = node.add_child(node.state.make_move(next_move))
-                else:
-                    node = node.select_child()
-                    # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
-            simulation_result = node.state.evaluate()
-            node.state.is_terminal = False
-            node.backpropagate(simulation_result)
+    Returns:
+        The best action to take based on the MCTS algorithm.
+    """
+    # print('searching')
+    root_node = Node(root_state, exploration_constant)
+    for i in range(iterations):
+        # if (i+1) % 100 == 0:
+        #     print(f'iteration {i+1}')
+        node = root_node
+        while random.random() <= math.exp(node.state.log_stable_prob):
+            if node.state.num_legal_moves == 0:
+                node.state.is_terminal = True
+                break
+            if not node.is_fully_expanded():
+                next_move = node.state.moves[node.last_child_idx]
+                node.last_child_idx += 1
+                node = node.add_child(node.state.make_move(next_move))
+            else:
+                node = node.select_child()
+                # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
+        simulation_result = node.state.evaluate()
+        node.state.is_terminal = False
+        node.backpropagate(simulation_result)
 
-        best_child = max(root_node.children, key=lambda x: x.visits)
-        return best_child.state.last_move, root_node
+    best_child = max(root_node.children, key=lambda x: x.visits)
+    return best_child.state.last_move, root_node
+
 
 class MCTS_player(Agent):
+    def __init__(self, num_iterations=1000):
+        super().__init__()
+        self.num_iterations = num_iterations
+
     def pick_move(self, tower: Tower):
         state = State(tower)
-        best_move, _ = mcts_search(state, 1000)
+        best_move, _ = mcts_search(state, self.num_iterations)
         return best_move
+
 
 class State:
     def __init__(self, tower=None, parent=None, last_move=None, log_stable_prob=0.0):
@@ -135,11 +143,12 @@ class State:
     def make_move(self, move):
         new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
         return State(tower=new_tower, parent=self, last_move=move, log_stable_prob=log_stable_prob)
-    
+
     def evaluate(self):
         if self.is_terminal:
             return 1
-        return -1 # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
+        return -1  # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
+
 
 # Example usage with a custom State class
 if __name__ == "__main__":
@@ -153,14 +162,15 @@ if __name__ == "__main__":
             break
         next_move, node = mcts_search(state, 1000, 2*math.sqrt(2))
         state = state.make_move(next_move)
-        player = 1-player
+        player = 1 - player
         for child in node.children:
-            exploitation_term = child.score / child.visits
-            exploration_term = node.exploration_constant * math.sqrt(math.log(node.visits) / child.visits)
+            exploitation_term = child.score/child.visits
+            exploration_term = node.exploration_constant*math.sqrt(math.log(node.visits)/child.visits)
             score = exploitation_term + exploration_term
-            print(f"{child.state.tower}\texploitation-term={exploitation_term:.4f} \texploration-term={exploration_term:.4f}\tscore={score:.4f}")
+            print(
+                f"{child.state.tower}\texploitation-term={exploitation_term:.4f} \texploration-term={exploration_term:.4f}\tscore={score:.4f}")
         print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
     if is_terminal:
-        print(f'player {1-player} won!')
+        print(f'player {1 - player} won!')
     else:
         print(f'player {player} won!')
