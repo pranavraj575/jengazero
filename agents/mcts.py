@@ -19,6 +19,7 @@ class State:
             self.tower = tower
         self.parent = parent
         self.moves = self.tower.valid_moves()
+        random.shuffle(self.moves)
         self.num_legal_moves = len(self.moves)
         self.last_move = last_move
         self.log_stable_prob = log_stable_prob
