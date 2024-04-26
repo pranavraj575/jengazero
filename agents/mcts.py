@@ -111,9 +111,53 @@ class Node:
             self.parent.backpropagate(-score)
 
 
-def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
+def random_playout(root_state: State, depth=float('inf'), trials=1):
+    """
+    preform a random playout from the root state
+        estimates how good root_state is to END at
+    takes into account the probability of the root state falling
+    Args:
+        root_state: initial state
+        depth: max depth to search to (default infinite)
+        trials: number of trials to take from root (default 1)
+    Return:
+        in general, runs eval on the termainal state and propegates it back to root state
+        takes average if trials>1
+    """
+    if root_state.num_legal_moves == 0:
+        return 1
+    score = 0
+    for trial in range(trials):
+        if random.random() > math.exp(root_state.log_stable_prob):
+            # THIS tower fell
+            # then the last player lost
+            score += -1
+            continue
+        # now we consider the next state
+        next_move = root_state.moves[random.randint(0, root_state.num_legal_moves - 1)]
+        next_state = root_state.make_move(next_move)
+        if next_state.num_legal_moves == 0:
+            # no legal moves here, losing state for player that ended at root_state
+            score += -1
+            continue
+        if depth <= 0:
+            # we hit the depth limit
+            goodness = next_state.evaluate(fell=False)
+            # this is an estimate of how good the next state is to END at
+            # so we invert and add this to score
+            score += -goodness
+            continue
+        # otherwise we now have to evaluate the next state
+        next_outcome = random_playout(next_state, depth=depth - 1, trials=1)
+        score += -next_outcome
+    return score/trials
+
+
+def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2), depth=float('inf')):
     """
     Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
+    assumes root_state is always non terminal
+        i.e. never falls, and has legal actions
 
     Args:
         root_state: The initial state of the problem or game.
@@ -132,21 +176,27 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
         node = root_node
         termination = None
         while True:
+            if not node.is_fully_expanded():
+                next_move = node.state.moves[node.last_child_idx]
+                node.last_child_idx += 1
+                node = node.add_child(node.state.make_move(next_move))
+                termination = 'unexplored child node'
+                break
+            else:
+                node = node.select_child()
+                # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
             if random.random() > math.exp(node.state.log_stable_prob):
                 termination = 'fell'
                 break
             if node.state.num_legal_moves == 0:
                 termination = 'no moves'
                 break
-            if not node.is_fully_expanded():
-                next_move = node.state.moves[node.last_child_idx]
-                node.last_child_idx += 1
-                node = node.add_child(node.state.make_move(next_move))
-            else:
-                node = node.select_child()
-                # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
-        simulation_result = node.state.evaluate(fell=(termination == 'fell'))
-        node.backpropagate(simulation_result)
+        if termination in ('fell', 'no moves'):
+            simulation_result = node.state.evaluate(fell=(termination == 'fell'))
+            node.backpropagate(simulation_result)
+        elif termination == 'unexplored child node':
+            simulation_result = random_playout(node.state, depth=depth)
+            node.backpropagate(simulation_result)
 
     best_child = max(root_node.children, key=lambda x: x.score)  # TODO: should this be x.score or x.visits
     return best_child.state.last_move, root_node
