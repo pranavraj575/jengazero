@@ -28,7 +28,7 @@ class State:
         new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
         return State(tower=new_tower, parent=self, last_move=move, log_stable_prob=log_stable_prob)
 
-    def evaluate(self, fell=False):
+    def evaluate(self, fell=False, eval_function=None):
         """
         this evaluation measures how good this state is to END in
             i.e. if player i plays a move that leads to this state,
@@ -42,7 +42,11 @@ class State:
         if self.num_legal_moves == 0:
             # this is if the tower has no moves left
             return 1
-        return 0
+        if eval_function is None:
+            return 0
+        if eval_function=='stability':
+            stable_prob=math.exp(self.log_stable_prob)
+            return -1*(1-stable_prob)+0*stable_prob
 
 
 class Node:
@@ -172,8 +176,8 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2), dep
     # print('searching')
     root_node = Node(root_state, exploration_constant)
     for i in range(iterations):
-        # if (i+1) % 100 == 0:
-        #     print(f'iteration {i+1}')
+        # if (i + 1)%1 == 0:
+        #     print(f'\riteration {i + 1}', end='')
         node = root_node
         termination = None
         while True:
@@ -220,11 +224,12 @@ if __name__ == "__main__":
     player = 0
     is_terminal = False
     print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
+    num_moves=0
     while random.random() <= math.exp(state.log_stable_prob):
         if state.num_legal_moves == 0:
             is_terminal = True
             break
-        next_move, node = mcts_search(state, 1000, 2*math.sqrt(2))
+        next_move, node = mcts_search(state, 1000, 2*math.sqrt(2), depth=float('inf'))
         state = state.make_move(next_move)
         player = 1 - player
         for child in node.children:
@@ -234,6 +239,7 @@ if __name__ == "__main__":
             print(
                 f"{child.state.tower}\texploitation-term={exploitation_term:.4f} \texploration-term={exploration_term:.4f}\tscore={score:.4f}")
         print(f"player {player}'s turn\t{state.tower} log_stable_prob={state.log_stable_prob:.4f}")
+        num_moves+=1
     if is_terminal:
         print(f'player {1 - player} won!')
     else:
