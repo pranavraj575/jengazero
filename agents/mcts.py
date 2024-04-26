@@ -58,7 +58,7 @@ class BasicState(State):
                           last_move=move,
                           log_stable_prob=log_stable_prob)
 
-    def evaluate(self, fell=False):
+    def evaluate(self, fell=False, params=None):
         """
         this evaluation measures how good this state is to END in
             i.e. if player i plays a move that leads to this state,
@@ -66,6 +66,8 @@ class BasicState(State):
             if this tower has no valid moves, the player that moves to this tower will win (as next player has no moves)
             if this tower falls, the player that moves to this tower will lose
         """  # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
+        if params is None:
+            params = dict()
         if fell:
             # this is if the tower fell
             return -1
@@ -73,7 +75,8 @@ class BasicState(State):
             # this is if the tower has no moves left
             return 1
         else:
-            return 0
+
+            return random_playout(root_state=self, trials=params.get('trials', 1))
         """
             stable_prob = math.exp(self.log_stable_prob)
             return -1*(1 - stable_prob) + 0*stable_prob
@@ -149,15 +152,21 @@ class Node:
         if self.parent is not None:
             self.parent.backpropagate(-score)
 
+    def tree_depth(self):
+        if len(self.children) == 0:
+            # we are a leaf node
+            return 1
+        return max(child.tree_depth() for child in self.children) + 1
 
-def random_playout(root_state: State, depth=float('inf'), trials=1):
+
+def random_playout(root_state: State, trials=1):
     """
+    assumes root_state does not fall
     preform a random playout from the root state
         estimates how good root_state is to END at
     takes into account the probability of the root state falling
     Args:
         root_state: initial state
-        depth: max depth to search to (default infinite)
         trials: number of trials to take from root (default 1)
     Return:
         in general, runs eval on the termainal state and propegates it back to root state
@@ -167,27 +176,19 @@ def random_playout(root_state: State, depth=float('inf'), trials=1):
         return 1
     score = 0
     for trial in range(trials):
-        if random.random() > math.exp(root_state.log_stable_prob):
-            # THIS tower fell
-            # then the last player lost
-            score += -1
-            continue
         # now we consider the next state
         next_move = root_state.moves[random.randint(0, root_state.num_legal_moves - 1)]
         next_state = root_state.make_move(next_move)
+        if random.random() > math.exp(next_state.log_stable_prob):
+            # next tower fell, so the player that ended at root_state won
+            score += 1
+            continue
         if next_state.num_legal_moves == 0:
             # no legal moves here, losing state for player that ended at root_state
             score += -1
             continue
-        if depth <= 0:
-            # we hit the depth limit
-            goodness = next_state.evaluate(fell=False)
-            # this is an estimate of how good the next state is to END at
-            # so we invert and add this to score
-            score += -goodness
-            continue
         # otherwise we now have to evaluate the next state
-        next_outcome = random_playout(next_state, depth=depth - 1, trials=1)
+        next_outcome = random_playout(next_state, trials=1)
         score += -next_outcome
     return score/trials
 
@@ -195,8 +196,7 @@ def random_playout(root_state: State, depth=float('inf'), trials=1):
 def mcts_search(root_state,
                 iterations,
                 exploration_constant=2*math.sqrt(2),
-                depth=float('inf'),
-                random_trials=1
+                params=None,
                 ):
     """
     Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.
@@ -207,8 +207,7 @@ def mcts_search(root_state,
         root_state: The initial state of the problem or game.
         iterations: The number of iterations to run the search.
         exploration_constant: The exploration constant (default: sqrt(2)).
-        depth: depth to randomly explore from a leaf (default infinite)
-        random_trials: number of random trials to explore from a leaf (default 1)
+        params: params to give evaluate
 
     Returns:
         The best action to take based on the MCTS algorithm.
@@ -236,12 +235,14 @@ def mcts_search(root_state,
             if node.state.num_legal_moves == 0:
                 termination = 'no moves'
                 break
-        if termination in ('fell', 'no moves'):
-            simulation_result = node.state.evaluate(fell=(termination == 'fell'))
-            node.backpropagate(simulation_result)
-        elif termination == 'unexplored child node':
-            simulation_result = random_playout(node.state, depth=depth, trials=random_trials)
-            node.backpropagate(simulation_result)
+        if termination == 'unexplored child node':
+            # we have not done the fallen check yet in this case
+            fell = random.random() > math.exp(node.state.log_stable_prob)
+        else:
+            fell = (termination == 'fell')
+
+        simulation_result = node.state.evaluate(fell=fell, params=params)
+        node.backpropagate(simulation_result)
 
     best_child = max(root_node.children, key=lambda x: x.get_exploit_score())
     return best_child.state.last_move, root_node
@@ -251,30 +252,23 @@ class MCTS_player(Agent):
     def __init__(self,
                  num_iterations=1000,
                  exploration_constant=2*math.sqrt(2),
-                 depth_limit=float('inf'),
-                 random_trials=1,
                  ):
         """
         player for MCTS
         Args:
             num_iterations: number of iterations to run MCTS search
             exploration_constant: exploration constant to use during MCTS search
-            depth_limit: depth limit to use for MCTS search
-            random_trials: number of random trials to use to evalueate a leaf in MCTS search
         """
         super().__init__()
         self.num_iterations = num_iterations
         self.exploration_constant = exploration_constant
-        self.depth_limit = depth_limit
-        self.random_trials = random_trials
 
     def pick_move(self, tower: Tower):
         state = BasicState(tower)
         best_move, _ = mcts_search(root_state=state,
                                    iterations=self.num_iterations,
                                    exploration_constant=self.exploration_constant,
-                                   depth=self.depth_limit,
-                                   random_trials=self.random_trials)
+                                   )
         return best_move
 
 
@@ -289,7 +283,8 @@ if __name__ == "__main__":
         if state.num_legal_moves == 0:
             is_terminal = True
             break
-        next_move, node = mcts_search(state, 1000, 2*math.sqrt(2), depth=float('inf'))
+        next_move, node = mcts_search(state, 1000, 2*math.sqrt(2))
+        print('search tree depth:', node.tree_depth())
         state = state.make_move(next_move)
         player = 1 - player
         for child in node.children:
@@ -304,3 +299,4 @@ if __name__ == "__main__":
         print(f'player {1 - player} won!')
     else:
         print(f'player {player} won!')
+    print('game length', num_moves)
