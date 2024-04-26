@@ -1,5 +1,7 @@
 import torch.nn as nn
 from src.tower import *
+from src.agent import Agent
+import pickle
 
 
 class FFNetwork(nn.Module):
@@ -29,6 +31,75 @@ class FFNetwork(nn.Module):
         return x
 
 
+class NetAgent(Agent):
+    def __init__(self):
+        super().__init__()
+        self.buffer = None
+        self.network = None
+
+    def save_all(self, path):
+        """
+        saves all info to a folder
+        """
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        self.buffer.save(os.path.join(path, 'buffer.pkl'))
+        torch.save(self.network.state_dict(), os.path.join(path, 'model.pkl'), _use_new_zipfile_serialization=False)
+        f = open(os.path.join(path, 'info.pkl'), 'wb')
+        pickle.dump(self.info, f)
+        f.close()
+
+    def load_all(self, path):
+        """
+        loads all info from a folder
+        """
+        self.buffer.load(os.path.join(path, 'buffer.pkl'))
+        self.network.load_state_dict(torch.load(os.path.join(path, 'model.pkl')))
+        f = open(os.path.join(path, 'info.pkl'), 'rb')
+        self.info = pickle.load(f)
+        f.close()
+
+    def load_last_checkpoint(self, path):
+        """
+        loads most recent checkpoint
+            assumes folder name is epoch number
+        """
+        path = os.path.join(path, 'checkpoints')
+        best = -1
+        for folder in os.listdir(path):
+            check = os.path.join(path, folder)
+            if os.path.isdir(check) and folder.isnumeric():
+                best = max(best, int(folder))
+        if best < 0:
+            # checkpoint not found
+            return False
+
+        self.load_all(os.path.join(path, str(best)))
+        return True
+
+    def q_value(self, tower, action, network):
+        # returns an estimate of q value of taking aciton from tower
+        # does not need to be implemented, but heatmap can be visualized if it is implemented
+        raise NotImplementedError
+
+    def heatmap(self, tower: Tower):
+        """
+        returns the value of each possible action removing a block in tower
+            (an action consists of pick and place, we simply consider removing a block and
+                take the max Q-value over all actions removing this block)
+        """
+        removes, places = tower.valid_moves_product()
+        heat = dict()
+        for remove in removes:
+            for place in places:
+                if remove not in heat:
+                    heat[remove] = -np.inf
+                    qval = self.q_value(tower=tower, action=(remove, place))
+                    heat[remove] = max(heat[remove], qval)
+        return heat
+
+
 def basic_featurize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):
     """
     returns handpicked features of tower as an np vector
@@ -53,17 +124,18 @@ def basic_featurize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):
 
 BASIC_FEATURESIZE = 1 + INITIAL_SIZE*3*2 + INITIAL_SIZE*3*3
 
-max_mod = 4
+max_mod = 4  # give features mod 2 up to mod this number exclusive
 
 
-# give features mod 2 up to mod this number exclusive
 def nim_featureize(tower: Tower):
     free_moves = tower.free_valid_moves()
-    moves_till_reset = tower.blocks_on_level(-1)
-    return np.array([free_moves%k for k in range(2, max_mod)] + [moves_till_reset])
+    layer_types = tower.layer_type_count()
+    negative_moves_till_reset = tower.blocks_on_level(-1)
+    full_list = [negative_moves_till_reset, free_moves] + layer_types
+    return np.concatenate([np.array([item%k for item in full_list]) for k in range(2, max_mod)])
 
 
-NIM_FEATURESIZE = 1 + (max_mod - 2)
+NIM_FEATURESIZE = (max_mod - 2)*(4 + 1 + 1)
 
 
 def union_featureize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):

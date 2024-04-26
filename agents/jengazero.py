@@ -1,7 +1,8 @@
 from agents.mcts import *
-from agents.dqn import basic_featurize, BASIC_FEATURESIZE
-from src.networks import FFNetwork
-
+from src.networks import *
+from agents.replay_buffer import *
+from src.tower import INITIAL_SIZE
+import torch
 
 class NNState(State):
     def __init__(self,
@@ -42,18 +43,47 @@ class NNState(State):
         return self.policy_dist[move_index_map(move)]
 
 
-class JengaZero(Agent):
-    def __init__(self):
+
+class JengaZero(NetAgent):
+    def __init__(self,
+                 hidden_layers,
+                 tower_embedder,
+                 tower_embed_dim,
+                 max_tower_size=3*INITIAL_SIZE,
+                 num_iterations=1000,
+                 exploration_constant=2*math.sqrt(2),
+                 lr=.001
+                 ):
         super().__init__()
+        output_dim=3*max_tower_size+1
+        layers=[tower_embed_dim]+hidden_layers+[output_dim]
+        self.num_iterations=num_iterations
+        self.exploration_constant=exploration_constant
+
+        self.network=FFNetwork(layers)
+        self.target_network=FFNetwork(layers)
+
+        self.tower_embed_dim=tower_embed_dim
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)
+        self.buffer = ReplayMemory()
+
+        self.info = dict()
+        self.info['epochs_trained'] = 0
+        self.info['test win rate'] = []
 
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
             'policy_network': None,
-            'embedding': None,
+            'embedding': tower_embedder,
             'move_index_map': None,
             'value_network': None,
         }
 
+
     def pick_move(self, tower: Tower):
         root_state = NNState(tower=tower)
-        mcts_search(root_state, 1000, params={self.params})
+        best_move, root_node=mcts_search(root_state=root_state,
+                                         iterations=self.num_iterations,
+                                         exploration_constant=self.exploration_constant,
+                                         params={self.params})
+        return best_move

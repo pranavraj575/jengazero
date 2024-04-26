@@ -17,6 +17,25 @@ class Agent:
         """
         raise NotImplementedError
 
+    def test_against(self, agent, N=100):
+        """
+        plays N games against agent, returns the success rate
+        """
+        lost = 0
+        for _ in range(N):
+            if np.random.random() < .5:
+                agents = [self, agent]
+                idx = 0
+            else:
+                agents = [agent, self]
+                idx = 1
+            loser, _, hist = outcome(agents)
+            if loser == idx:
+                lost += 1
+
+        # return the number of times we did not lose
+        return 1 - lost/N
+
 
 def outcome(agents: List[Agent], tower: Tower = None, keep_history=True):
     """

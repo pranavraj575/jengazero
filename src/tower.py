@@ -275,35 +275,47 @@ class Tower:
 
     def free_valid_moves(self):
         """
-        returns total free valid moves
-        if the top layer is filled, include the (self.height-1)th layer (1 indexed)
-        else, go up to (self.height-2), 1 indexed
-        """
-        return sum(self.free_moves_on_level(L) for L in range(self.height() - 2 + self.top_layer_filled()))
-
-    def free_moves_on_level(self, L):
-        """
-        returns 'free moves' on level L
+        returns total 'free moves' that are valid to take
             a free move is the max number of moves left before a level is probably fallen
             a full layer has 2 free moves
             a layer with one block has 0 free moves
             a layer with 2 blocks has either 0 or 1 free move depending on the arrangement
-        :param L: level
-        :return: int
+        if the top layer is filled, include the (self.height-1)th layer (1 indexed)
+        else, go up to (self.height-2), 1 indexed
         """
-        count = self.blocks_on_level(L)
-        if count == 1:
-            return 0
-        elif count == 3:
-            return 2
-        else:
-            # there are two blocks
-            if self.block_info[L][1] is None:
-                # if there is no middle block, return 0
-                return 0
+        layer_types = self.layer_type_count()
+        return layer_types[1] + 2*layer_types[3]
+
+    def layer_type_count(self):
+        """
+        returns number of each layer type, not including layers that we cannot remove blocks from
+
+        types are
+            one block
+            two block (| || |)
+            two block (| |   | |)
+            three block
+        """
+        layer_counts = [0,  # one block layers
+                        0,  # two block (| || |) layers
+                        0,  # two block (| |   | |) layers
+                        0,  # three block layers
+                        ]
+        for L in range(self.height() - 2 + self.top_layer_filled()):
+            # if top layer is filled, go one more
+            count = self.blocks_on_level(L)
+            if count == 1:
+                layer_counts[0] += 1
+            elif count == 3:
+                layer_counts[3] += 1
             else:
-                # else, the middle block and a side block is there
-                return 1
+                # there are two blocks
+                if self.block_info[L][1] is None:
+                    # if there is no middle block
+                    layer_counts[2] += 1
+                else:
+                    layer_counts[1] += 1
+        return layer_counts
 
     def height(self):
         """

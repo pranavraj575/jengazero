@@ -21,12 +21,11 @@ class DQN(FFNetwork):
 SKIP_OPPONENT_STEP = False
 
 
-class DQN_player(Agent):
+class DQN_player(NetAgent):
     def __init__(self,
                  hidden_layers,
                  tower_embedder,
                  tower_embed_dim,
-                 max_height=None,
                  gamma=.99,
                  epsilon=.9,
                  lr=.001,
@@ -90,46 +89,12 @@ class DQN_player(Agent):
                                             self.tower_embedder(placed))), dtype=torch.float32,
                             device=DEVICE).reshape((1, -1))
 
-    def save_all(self, path):
-        """
-        saves all info to a folder
-        """
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        self.buffer.save(os.path.join(path, 'buffer.pkl'))
-        torch.save(self.network.state_dict(), os.path.join(path, 'model.pkl'), _use_new_zipfile_serialization=False)
-        f = open(os.path.join(path, 'info.pkl'), 'wb')
-        pickle.dump(self.info, f)
-        f.close()
-
     def load_all(self, path):
         """
         loads all info from a folder
         """
-        self.buffer.load(os.path.join(path, 'buffer.pkl'))
-        self.network.load_state_dict(torch.load(os.path.join(path, 'model.pkl')))
-        f = open(os.path.join(path, 'info.pkl'), 'rb')
-        self.info = pickle.load(f)
-        f.close()
-
-    def load_last_checkpoint(self, path):
-        """
-        loads most recent checkpoint
-            assumes folder name is epoch number
-        """
-        path = os.path.join(path, 'checkpoints')
-        best = -1
-        for folder in os.listdir(path):
-            check = os.path.join(path, folder)
-            if os.path.isdir(check) and folder.isnumeric():
-                best = max(best, int(folder))
-        if best < 0:
-            # checkpoint not found
-            return False
-
-        self.load_all(os.path.join(path, str(best)))
-        return True
+        super().load_all(path)
+        self.update_target_net()
 
     def tower_value(self, tower: Tower, network=None):
         """
@@ -221,22 +186,10 @@ class DQN_player(Agent):
         """
         temp_epsilon = self.epsilon
         self.epsilon = 0
-        lost = 0
-        for _ in range(N):
-            if np.random.random() < .5:
-                agents = [self, agent]
-                idx = 0
-            else:
-                agents = [agent, self]
-                idx = 1
-            loser, _, hist = outcome(agents)
-            if loser == idx:
-                lost += 1
-
+        success_rate = super().test_against(agent=agent, N=N)
         self.epsilon = temp_epsilon
 
-        # return the number of times we did not lose
-        return 1 - lost/N
+        return success_rate
 
     def train(self, epochs=1, agent_pairs=None, testing_agent=None, checkpt_dir=None, checkpt_freq=10):
         """
@@ -275,21 +228,6 @@ class DQN_player(Agent):
                         os.makedirs(folder)
                     self.save_all(folder)
 
-    def heatmap(self, tower: Tower):
-        """
-        returns the value of each possible action removing a block in tower
-            (an action consists of pick and place, we simply consider removing a block and
-                take the max Q-value over all actions removing this block)
-        """
-        removes, places = tower.valid_moves_product()
-        heat = dict()
-        for remove in removes:
-            for place in places:
-                if remove not in heat:
-                    heat[remove] = -np.inf
-                    qval = self.q_value(tower=tower, action=(remove, place)).item()
-                    heat[remove] = max(heat[remove], qval)
-        return heat
 
 
 if __name__ == "__main__":
@@ -297,6 +235,7 @@ if __name__ == "__main__":
     from agents.randy import Randy, SmartRandy
 
     embedding = ('basic', basic_featurize, BASIC_FEATURESIZE)
+    # embedding = ('nim', nim_featureize, NIM_FEATURESIZE)
     opponent = ('random', Randy())
     # opponent = ('smart_random', SmartRandy())
 
