@@ -1,14 +1,15 @@
 from src.agent import *
-from agents.randy import Randy
+from agents.randy import Randy,SmartRandy
 from agents.dqn import DQN_player
 from agents.mcts import MCTS_player
 
 seed(69)
 DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-dqn = DQN_player([256])
-#dqn.load_all(os.path.join(DIR, 'data', 'dqn_against_smart_random_200_epochs_towersize_5_hidden_layers_256'))
-dqn.load_all(os.path.join(DIR, 'data', 'dqn_against_random_50_epochs_towersize_5_hidden_layers_256'))
+#dqn = DQN_player([256])
+#dqn.load_all(os.path.join(DIR, 'data', 'dqn_against_random_50_epochs_towersize_5_hidden_layers_256_embedding_basic'))
+
+dqn=SmartRandy()
 mcts = MCTS_player()
 options = [[dqn, mcts], [mcts, dqn]]
 loser = [0, 0]  # dqn, mcts

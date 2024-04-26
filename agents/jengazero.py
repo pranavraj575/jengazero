@@ -1,5 +1,5 @@
 from agents.mcts import *
-from agents.dqn import featurize, FEATURESIZE
+from agents.dqn import basic_featurize, BASIC_FEATURESIZE
 from src.networks import FFNetwork
 
 

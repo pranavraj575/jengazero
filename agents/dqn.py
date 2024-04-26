@@ -1,35 +1,10 @@
 from src.agent import *
 from agents.replay_buffer import *
 from src.utils import *
-from src.networks import FFNetwork
+from src.networks import *
 import torch.nn as nn
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def featurize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):
-    """
-    returns handpicked features of tower as an np vector
-    :param tower: input tower
-    :param MAX_HEIGHT: max possible height of tower, default INITIAL_SIZE*3
-    :return: np vector
-    """
-    COMs = np.zeros((MAX_HEIGHT, 2))
-    blocks = np.zeros((MAX_HEIGHT, 3))
-
-    COMs[:tower.height(), :] = [[x, y] for x, y, z in
-                                tower.COMs]  # COMs[0] shoult be the overall tower COM, projected to xy
-    for i, layer in enumerate(tower.block_info):
-        blocks[i, :] = [t is not None for t in layer]
-    return np.concatenate(
-        ([tower.height()],
-         COMs.flatten(),
-         blocks.flatten(),
-         )
-    )
-
-
-FEATURESIZE = 1 + INITIAL_SIZE*3*2 + INITIAL_SIZE*3*3
 
 
 class DQN(FFNetwork):
@@ -40,15 +15,23 @@ class DQN(FFNetwork):
         :param activation: activation before each hidden layer
         :param output_activation: activation before output (None if no activation)
         """
-        super().__init__(layers+[1],activation=activation,output_activation=output_activation)
-
+        super().__init__(layers + [1], activation=activation, output_activation=output_activation)
 
 
 SKIP_OPPONENT_STEP = False
 
 
 class DQN_player(Agent):
-    def __init__(self, hidden_layers, max_height=None, gamma=.99, epsilon=.9, lr=.001, tau=1.):
+    def __init__(self,
+                 hidden_layers,
+                 tower_embedder,
+                 tower_embed_dim,
+                 max_height=None,
+                 gamma=.99,
+                 epsilon=.9,
+                 lr=.001,
+                 tau=1.
+                 ):
         """
         creates an agent that uses DQN
         :param max_height: if unspecified, does the correct max_height according to INITIAL_SIZE
@@ -59,13 +42,10 @@ class DQN_player(Agent):
         self.gamma = gamma
         self.epsilon = epsilon
         self.tau = tau
-        if max_height is None:
-            max_height = 3*INITIAL_SIZE
-        self.max_height = max_height
-        feature_size = 1 + max_height*2 + max_height*3
-        input_size = feature_size*2 + 3
+        self.tower_embedder = tower_embedder
+        self.tower_embed_dim = tower_embed_dim
 
-        layers = [input_size] + hidden_layers
+        layers = [2*tower_embed_dim + 3] + hidden_layers
         self.network = DQN(layers=layers).to(device=DEVICE)
         self.target_net = DQN(layers=layers).to(DEVICE)
         self.update_target_net()
@@ -106,8 +86,8 @@ class DQN_player(Agent):
         placed = removed.place_block(place, blk_pos_std=0., blk_angle_std=0.)
         # adds in the layer after we removed a block
         return torch.tensor(np.concatenate((new_layer,
-                                            featurize(removed, MAX_HEIGHT=self.max_height),
-                                            featurize(placed, MAX_HEIGHT=self.max_height))), dtype=torch.float32,
+                                            self.tower_embedder(removed),
+                                            self.tower_embedder(placed))), dtype=torch.float32,
                             device=DEVICE).reshape((1, -1))
 
     def save_all(self, path):
@@ -138,7 +118,7 @@ class DQN_player(Agent):
         loads most recent checkpoint
             assumes folder name is epoch number
         """
-        path=os.path.join(path,'checkpoints')
+        path = os.path.join(path, 'checkpoints')
         best = -1
         for folder in os.listdir(path):
             check = os.path.join(path, folder)
@@ -316,10 +296,11 @@ if __name__ == "__main__":
     from agents.determined import FastPick
     from agents.randy import Randy, SmartRandy
 
+    embedding = ('basic', basic_featurize, BASIC_FEATURESIZE)
     opponent = ('random', Randy())
-    opponent = ('smart_random', SmartRandy())
+    # opponent = ('smart_random', SmartRandy())
 
-    epochs = 200
+    epochs = 50
     hidden_layers = [256]
     hidden_str = ''
     for size in hidden_layers:
@@ -331,10 +312,12 @@ if __name__ == "__main__":
                              str(epochs) +
                              '_epochs_towersize_' +
                              str(INITIAL_SIZE) +
-                             '_hidden_layers' + hidden_str)
+                             '_hidden_layers' + hidden_str +
+                             '_embedding_' + embedding[0]
+                             )
     print('saving to', save_path)
     seed(42069)
-    player = DQN_player(hidden_layers=hidden_layers)
+    player = DQN_player(hidden_layers=hidden_layers, tower_embedder=embedding[1], tower_embed_dim=embedding[2])
     agent_pairs = [(player, player), (player, opponent[1])]
     if os.path.exists(os.path.join(save_path, 'info.pkl')):
         print('loading initial', save_path)
