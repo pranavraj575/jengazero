@@ -11,6 +11,39 @@ from src.agent import Agent, outcome
 from src.tower import Tower
 
 
+class State:
+    def __init__(self, tower=None, parent=None, last_move=None, log_stable_prob=0.0):
+        if tower is None:
+            self.tower = Tower(pos_std=0.001, angle_std=0.001)
+        else:
+            self.tower = tower
+        self.parent = parent
+        self.moves = self.tower.valid_moves()
+        self.num_legal_moves = len(self.moves)
+        self.last_move = last_move
+        self.log_stable_prob = log_stable_prob
+
+    def make_move(self, move):
+        new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
+        return State(tower=new_tower, parent=self, last_move=move, log_stable_prob=log_stable_prob)
+
+    def evaluate(self, fell=False):
+        """
+        this evaluation measures how good this state is to END in
+            i.e. if player i plays a move that leads to this state,
+                return 1 if player i will win and -1 if lost
+            if this tower has no valid moves, the player that moves to this tower will win (as next player has no moves)
+            if this tower falls, the player that moves to this tower will lose
+        """  # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
+        if fell:
+            # this is if the tower fell
+            return -1
+        if self.num_legal_moves == 0:
+            # this is if the tower has no moves left
+            return 1
+        return 0
+
+
 class Node:
     def __init__(self, state, exploration_constant=math.sqrt(2), parent=None):
         self.state = state
@@ -97,9 +130,13 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
         # if (i+1) % 100 == 0:
         #     print(f'iteration {i+1}')
         node = root_node
-        while random.random() <= math.exp(node.state.log_stable_prob):
+        termination = None
+        while True:
+            if random.random() <= math.exp(node.state.log_stable_prob):
+                termination = 'fell'
+                break
             if node.state.num_legal_moves == 0:
-                node.state.is_terminal = True
+                termination = 'no moves'
                 break
             if not node.is_fully_expanded():
                 next_move = node.state.moves[node.last_child_idx]
@@ -108,11 +145,10 @@ def mcts_search(root_state, iterations, exploration_constant=2*math.sqrt(2)):
             else:
                 node = node.select_child()
                 # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
-        simulation_result = node.state.evaluate()
-        node.state.is_terminal = False
+        simulation_result = node.state.evaluate(fell=(termination == 'fell'))
         node.backpropagate(simulation_result)
 
-    best_child = max(root_node.children, key=lambda x: x.visits)
+    best_child = max(root_node.children, key=lambda x: x.score)  # TODO: should this be x.score or x.visits
     return best_child.state.last_move, root_node
 
 
@@ -125,29 +161,6 @@ class MCTS_player(Agent):
         state = State(tower)
         best_move, _ = mcts_search(state, self.num_iterations)
         return best_move
-
-
-class State:
-    def __init__(self, tower=None, parent=None, last_move=None, log_stable_prob=0.0):
-        if tower is None:
-            self.tower = Tower(pos_std=0.001, angle_std=0.001)
-        else:
-            self.tower = tower
-        self.parent = parent
-        self.moves = self.tower.valid_moves()
-        self.num_legal_moves = len(self.moves)
-        self.last_move = last_move
-        self.log_stable_prob = log_stable_prob
-        self.is_terminal = False
-
-    def make_move(self, move):
-        new_tower, log_stable_prob = self.tower.play_move_log_probabilistic(move[0], move[1])
-        return State(tower=new_tower, parent=self, last_move=move, log_stable_prob=log_stable_prob)
-
-    def evaluate(self):
-        if self.is_terminal:
-            return 1
-        return -1  # this will be inverted up the tree, -1 reward for a loss, 1 reward for opp loss
 
 
 # Example usage with a custom State class
