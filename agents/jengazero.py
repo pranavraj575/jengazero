@@ -6,6 +6,7 @@ from agents.replay_buffer import *
 from src.tower import INITIAL_SIZE
 import torch
 import time
+import scipy
 
 
 class NNState(State):
