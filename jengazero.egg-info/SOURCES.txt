@@ -1,6 +1,0 @@
-setup.py
-jengazero.egg-info/PKG-INFO
-jengazero.egg-info/SOURCES.txt
-jengazero.egg-info/dependency_links.txt
-jengazero.egg-info/requires.txt
-jengazero.egg-info/top_level.txt
