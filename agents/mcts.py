@@ -167,7 +167,7 @@ class Node:
         self.children.append(child)
         return child
 
-    def select_child(self, params=None):
+    def select_child(self, params=None, mode='default'):
         """
         Select a child node based on the UCB1 formula.
         Args:
@@ -180,11 +180,16 @@ class Node:
 
         for child in self.children:
             exploitation_term = child.get_exploit_score()
-            exploration_term = math.sqrt(math.log(self.visits)/child.visits)
-            move_made = child.state.last_move
-            policy_prob = self.state.policy(move_made, params=params)
+            exploration_term = 0.0
 
-            score = exploitation_term + self.exploration_constant*policy_prob*exploration_term
+            if mode == "default":
+                exploration_term = self.exploration_constant * math.sqrt(math.log(self.visits)/child.visits)
+            if mode == "alphazero":
+                move_made = child.state.last_move
+                policy_prob = self.state.policy(move_made, params=params)
+                exploration_term = self.exploration_constant * policy_prob * math.sqrt(self.visits / (1.0 + child.visits))
+
+            score = exploitation_term + exploration_term
             if score > best_score:
                 best_child = child
                 best_score = score
@@ -218,6 +223,7 @@ def mcts_search(root_state,
                 iterations,
                 exploration_constant=2*math.sqrt(2),
                 params=None,
+                mode='default'
                 ):
     """
     Perform Monte Carlo Tree Search (MCTS) on the given root state to find the best action.

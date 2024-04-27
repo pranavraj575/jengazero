@@ -124,12 +124,14 @@ class JengaZero(NetAgent):
         best_move,root_node=mcts_search(root_state=NNState(tower=tower),
                     iterations=self.num_iterations,
                     exploration_constant=self.exploration_constant,
-                    params={self.params})
+                    params={self.params},
+                    mode="alphazero")
 
     def pick_move(self, tower: Tower):
         root_state = NNState(tower=tower)
         best_move, root_node = mcts_search(root_state=root_state,
                                            iterations=self.num_iterations,
                                            exploration_constant=self.exploration_constant,
-                                           params={self.params})
+                                           params={self.params},
+                                           mode="alphazero")
         return best_move
