@@ -74,8 +74,8 @@ class JengaZero(NetAgent):
         self.info = dict()
         self.info['epochs_trained'] = 0
         self.info['test win rate'] = []
-
-        value_network = lambda embedding: self.network(embedding)[-1]
+        def value_network(embedding):
+            return self.network(embedding)[-1]
 
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
@@ -145,8 +145,7 @@ class JengaZero(NetAgent):
         moves_taken = [child.state.last_move for child in root_node.children]
 
         broken_distribution = torch.zeros(self.policy_output_size)
-        unordered_distribution = torch.softmax(torch.tensor(q_value_vector), 0)
-
+        unordered_distribution = torch.nn.Softmax(dim=-1)(torch.tensor(q_value_vector))
         pick_distribution = torch.zeros(self.policy_output_size - 3)
         place_distribution = torch.zeros(3)
         for i in range(len(unordered_distribution)):
@@ -219,14 +218,15 @@ if __name__ == '__main__':
     seed(69)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-    save_path = os.path.join(DIR, 'data', 'jengazero_test')
+    save_path = os.path.join(DIR, 'data', 'jengazero_nim_featureset')
 
     agent = JengaZero([128, 128],
                       num_iterations=1000,
                       tower_embedder=lambda tower:
-                      torch.tensor(union_featureize(tower=tower), dtype=torch.float),
-                      tower_embed_dim=UNION_FEATURESIZE)
-    print(UNION_FEATURESIZE)
-    if os.path.exists(save_path):
+                      torch.tensor(nim_featureize(tower), dtype=torch.float),
+                      tower_embed_dim=NIM_FEATURESIZE)
+    if agent.loadable(save_path):
         agent.load_all(save_path)
-    agent.train(epochs=100, checkpt_freq=1, checkpt_dir=save_path)
+    else:
+        agent.load_last_checkpoint(save_path)
+    agent.train(epochs=420, checkpt_freq=1, checkpt_dir=save_path)

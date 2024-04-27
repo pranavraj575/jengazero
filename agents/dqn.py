@@ -263,7 +263,7 @@ if __name__ == "__main__":
     seed(42069)
     player = DQN_player(hidden_layers=hidden_layers, tower_embedder=embedding[1], tower_embed_dim=embedding[2])
     agent_pairs = [(player, player), (player, opponent[1])]
-    if os.path.exists(os.path.join(save_path, 'info.pkl')):
+    if player.loadable(save_path):
         print('loading initial', save_path)
         player.load_all(save_path)
     elif os.path.exists(os.path.join(save_path, 'checkpoints')):
