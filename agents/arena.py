@@ -17,7 +17,7 @@ def update_elos(agents, num_rounds=1, initial_elos=None, initial_win_counts=None
     if initial_win_counts is None:
         initial_win_counts = np.array([[0 for _ in range(len(agents))] for _ in range(len(agents))])
     # adds 2*num_rounds to the total number of games played
-    total_games=2*num_rounds+initial_win_counts[0][1]+initial_win_counts[1][0]
+    total_games = 2*num_rounds + initial_win_counts[0][1] + initial_win_counts[1][0]
     for i in range(len(agents)):
         for j in range(len(agents)):
             if i != j:
@@ -89,6 +89,11 @@ if __name__ == '__main__':
         ]
         if loadable(save_dir):
             old_elos, old_win_counts = load_all(save_dir)
+            print('loaded data from', save_dir)
+            print('win matrix:')
+            print(old_win_counts)
+            print('elos:')
+            print(old_elos)
         else:
             old_elos = [1000 for _ in range(len(all_agents))]
             old_win_counts = np.array([[0 for _ in range(len(all_agents))] for _ in range(len(all_agents))])
