@@ -187,7 +187,7 @@ class Node:
             if mode == "alphazero":
                 move_made = child.state.last_move
                 policy_prob = self.state.policy(move_made, params=params)
-                exploration_term = self.exploration_constant*policy_prob*math.sqrt(self.visits/(1.0 + child.visits))
+                exploration_term = self.exploration_constant*policy_prob*math.sqrt(self.visits)/(1.0 + child.visits)
 
             score = exploitation_term + exploration_term
             if score > best_score:

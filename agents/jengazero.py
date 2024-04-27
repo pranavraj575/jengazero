@@ -101,7 +101,8 @@ class JengaZero(NetAgent):
             for i in places:
                 mask[k, i - 3] = False  # either -3,-2,-1, so still works
 
-        embeddings = torch.stack([torch.tensor(self.tower_embedder(tower),dtype=torch.float) for tower in towers], dim=0)
+        embeddings = torch.stack([torch.tensor(self.tower_embedder(tower), dtype=torch.float) for tower in towers],
+                                 dim=0)
 
         return self.policy_network(embeddings=embeddings, mask=mask)
 
@@ -145,7 +146,8 @@ class JengaZero(NetAgent):
         return prob_stable*guesstimate + (1 - prob_stable)*(-1)
 
     def value_network_from_towers(self, towers):
-        embeddings = torch.stack([torch.tensor(self.tower_embedder(tower),dtype=torch.float) for tower in towers], dim=0)
+        embeddings = torch.stack([torch.tensor(self.tower_embedder(tower), dtype=torch.float) for tower in towers],
+                                 dim=0)
         return self.value_network(embeddings)
 
     def value_network(self, embeddings):
@@ -311,7 +313,8 @@ if __name__ == '__main__':
             print('loading from', save_path)
         else:
             print('saving to', save_path)
-    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
+    agent.train(epochs=520, checkpt_freq=10, checkpt_dir=save_path)
     t = Tower()
     t, _ = t.play_move_log_probabilistic((0, 2), 1)
-    print(agent.heatmap(t))
+    print(t)
+    print(agent.value_network_from_towers([t]).item())

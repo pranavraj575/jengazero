@@ -10,39 +10,34 @@ from src.networks import *
 import pickle
 
 
-def update_elos(agents, num_rounds=1, initial_elos=None):
+def update_elos(agents, num_rounds=1, initial_elos=None, initial_win_counts=None):
     if initial_elos is None:
         initial_elos = [1000 for _ in range(len(agents))]
     # initially all elos are 100
-    win_counts = [[0 for _ in range(len(agents))] for _ in range(len(agents))]
+    if initial_win_counts is None:
+        initial_win_counts = np.array([[0 for _ in range(len(agents))] for _ in range(len(agents))])
+
     for i in range(len(agents)):
         for j in range(len(agents)):
             if i != j:
                 for _ in range(num_rounds):
                     print('agent', i, 'vs agent', j, end=': ')
-                    
+
                     loser_index, _, hist = outcome([agents[i], agents[j]], Tower())
-                    win_counts[i][j] += loser_index  # loser_index 1 means i won against j
-                    win_counts[j][i] += 1 - loser_index  # loser_index 0 means j won against i
+                    initial_win_counts[i][j] += loser_index  # loser_index 1 means i won against j
+                    initial_win_counts[j][i] += 1 - loser_index  # loser_index 0 means j won against i
 
                     print('agent', (str(i) + str(j))[1 - loser_index], 'won')
-                    """
-                    for k, (tower, (remove, place), result) in enumerate(hist):
-                        print('agent', (str(i) + str(j))[k%2], 'moved:', end=' ')
-                        print(tower, end=' -> ')
-                        print(tower.play_move_deterministic(remove, place)[0], end='')
-                        print()
-                    print()
-                    """
+
     new_elos = initial_elos.copy()
     for i in range(len(agents)):
         for j in range(len(agents)):
             if i != j:
                 # update agent i's elo based on winrate against j
                 expected_score = 1.0/(1.0 + math.pow(10, -(initial_elos[i] - initial_elos[j])/400.0))
-                real_score = win_counts[i][j]/(2*num_rounds)
+                real_score = initial_win_counts[i][j]/(2*num_rounds)
                 new_elos[i] += 69*(real_score - expected_score)
-    return new_elos, win_counts
+    return new_elos, initial_win_counts
 
 
 def save_all(path, elos, win_counts):
@@ -96,9 +91,9 @@ if __name__ == '__main__':
         else:
             old_elos = [1000 for _ in range(len(all_agents))]
             old_win_counts = [[0 for _ in range(len(all_agents))] for _ in range(len(all_agents))]
-        old_win_counts = np.array(old_win_counts)
-        new_elos, win_counts = update_elos(all_agents, initial_elos=old_elos)
-        new_win_counts = old_win_counts + win_counts
+
+        new_elos, new_win_counts = update_elos(all_agents, initial_elos=old_elos, initial_win_counts=old_win_counts)
+        # new_win_counts = old_win_counts + win_counts
         save_all(save_dir, new_elos, new_win_counts)
         print(new_win_counts)
         print(new_elos)
