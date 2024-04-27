@@ -236,6 +236,7 @@ class JengaZero(NetAgent):
                     if not os.path.exists(folder):
                         os.makedirs(folder)
                     self.save_all(folder)
+                    self.save_all(checkpt_dir) # save to the folder itself as well
 
     def pick_move(self, tower: Tower):
         root_state = NNState(tower=tower)
