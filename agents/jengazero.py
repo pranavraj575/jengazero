@@ -242,15 +242,20 @@ if __name__ == '__main__':
 
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
+    #features = ('nim', nim_featureize, NIM_FEATURESIZE)
+    features = ('union', union_featureize, UNION_FEATURESIZE)
+
+    ident = 'jengazero_' + features[0] + '_featureset'
+
     save_path = os.path.join(DIR, 'jengazero_data', 'jengazero_nim_featureset')
 
     agent = JengaZero([128, 128],
                       num_iterations=1000,
                       tower_embedder=lambda tower:
-                      torch.tensor(nim_featureize(tower), dtype=torch.float),
-                      tower_embed_dim=NIM_FEATURESIZE)
+                      torch.tensor(features[1](tower), dtype=torch.float),
+                      tower_embed_dim=features[2])
     if agent.loadable(save_path):
         agent.load_all(save_path)
     else:
         agent.load_last_checkpoint(save_path)
-    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
+    agent.train(epochs=420, checkpt_freq=5, checkpt_dir=save_path)
