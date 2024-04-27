@@ -128,7 +128,15 @@ class JengaZero(NetAgent):
         else:
             return -1
 
-    def q_value(self, tower: Tower, action, network=None):
+    def q_value(self, tower, action, network=None):
+        return self.q_value_from_policy_net(tower=tower, action=action)
+        return self.q_value_from_value_net(tower=tower, action=action)
+
+    def q_value_from_policy_net(self, tower: Tower, action):
+        policy = self.policy_network_from_towers([tower]).flatten()
+        return policy[self.move_index_map(action)].item()
+
+    def q_value_from_value_net(self, tower: Tower, action):
         """
         returns Q-value of tower-action pair
             network is self.network if not specified
@@ -313,8 +321,8 @@ if __name__ == '__main__':
             print('loading from', save_path)
         else:
             print('saving to', save_path)
-    agent.train(epochs=520, checkpt_freq=10, checkpt_dir=save_path)
+    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
     t = Tower()
-    t, _ = t.play_move_log_probabilistic((0, 2), 1)
+    # t, _ = t.play_move_log_probabilistic((0, 2), 1)
     print(t)
-    print(agent.value_network_from_towers([t]).item())
+    print(agent.heatmap(t))
