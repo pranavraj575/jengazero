@@ -79,19 +79,21 @@ class JengaZero(NetAgent):
 
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
-            'policy_network': lambda embedding:self.policy_network(embedding).flatten(),
+            'policy_network': lambda embedding: self.policy_network(embedding).flatten(),
             'embedding': tower_embedder,
             'move_index_map': self.move_index_map,
             'value_network': value_network,
         }
 
     def policy_network(self, embeddings):
-        if len(embeddings.shape)==1:
-            embeddings=embeddings.unsqueeze(0)
-        condensed = self.network(embeddings)[:, :-1]
-        out= self.large_policy_from_condensed(condensed)
-        print(out)
-        return(out)
+        if len(embeddings.shape) == 1:
+            embeddings = embeddings.unsqueeze(0)
+        pre_softmax_condensed = self.network(embeddings)[:, :-1]
+        condensed = torch.zeros_like(pre_softmax_condensed)
+        condensed[:, :-3] = torch.nn.Softmax(dim=-1)(pre_softmax_condensed[:, :-3])
+        condensed[:, -3:] = torch.nn.Softmax(dim=-1)(pre_softmax_condensed[:, -3:])
+
+        return self.large_policy_from_condensed(condensed)
 
     def move_index_map(self, move):
         (L, i_remove), i_place = move
@@ -217,7 +219,7 @@ if __name__ == '__main__':
     seed(69)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-    save_path = os.path.join(DIR,'data', 'jengazero_test')
+    save_path = os.path.join(DIR, 'data', 'jengazero_test')
 
     agent = JengaZero([128, 128],
                       num_iterations=1000,
@@ -227,4 +229,4 @@ if __name__ == '__main__':
     print(UNION_FEATURESIZE)
     if os.path.exists(save_path):
         agent.load_all(save_path)
-    agent.train(epochs=100,checkpt_freq=1,checkpt_dir=save_path)
+    agent.train(epochs=100, checkpt_freq=1, checkpt_dir=save_path)
