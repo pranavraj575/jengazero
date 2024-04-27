@@ -74,6 +74,8 @@ class JengaZero(NetAgent):
         self.info = dict()
         self.info['epochs_trained'] = 0
         self.info['test win rate'] = []
+        self.info['losses'] = []
+
         def value_network(embedding):
             return self.network(embedding)[-1]
 
@@ -177,6 +179,7 @@ class JengaZero(NetAgent):
         overall_loss = val_loss + pol_loss
         overall_loss.backward()
         self.optimizer.step()
+        return val_loss, pol_loss
 
     def train(self, epochs=1, testing_agent=None, checkpt_dir=None, checkpt_freq=10, batch_size=64):
         testing_N = 10
@@ -190,7 +193,9 @@ class JengaZero(NetAgent):
 
         for epoch in range(epochs - self.info['epochs_trained']):
             self.add_training_data(Tower())
-            self.training_step(batch_size=batch_size)
+            val_loss, pol_loss = self.training_step(batch_size=batch_size)
+            self.info['epochs_trained'] += 1
+            self.info['losses'].append((self.info['epochs_trained'], val_loss.item(), pol_loss.item()))
 
             if testing_agent is not None:
                 win_rate = self.test_against(testing_agent, N=testing_N)

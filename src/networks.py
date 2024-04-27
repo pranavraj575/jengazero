@@ -49,7 +49,8 @@ class NetAgent(Agent):
         f = open(os.path.join(path, 'info.pkl'), 'wb')
         pickle.dump(self.info, f)
         f.close()
-    def loadable(self,path):
+
+    def loadable(self, path):
         """
         wheteher a save path is loadable from
         """
@@ -138,16 +139,17 @@ max_mod = 4  # give features mod 2 up to mod this number exclusive
 
 
 def nim_featureize(tower: Tower):
-    stability=tower.log_prob_stable()
-    height=tower.height()
+    stability = tower.log_prob_stable()
+    height = tower.height()
     free_moves = tower.free_valid_moves()
     layer_types = tower.layer_type_count()
     negative_moves_till_reset = tower.blocks_on_level(-1)
     full_list = [negative_moves_till_reset, free_moves] + layer_types
-    return np.concatenate([np.array((stability,height))]+[np.array([item%k for item in full_list]) for k in range(2, max_mod)])
+    return np.concatenate(
+        [np.array((stability, height))] + [np.array([item%k for item in full_list]) for k in range(2, max_mod)])
 
 
-NIM_FEATURESIZE = 2+(max_mod - 2)*(4 + 1 + 1)
+NIM_FEATURESIZE = 2 + (max_mod - 2)*(4 + 1 + 1)
 
 
 def union_featureize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):
