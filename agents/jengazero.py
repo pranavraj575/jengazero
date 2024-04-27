@@ -87,6 +87,10 @@ class JengaZero(NetAgent):
             'move_index_map': self.move_index_map,
             'value_network': value_network,
         }
+    def load_all(self,path):
+        super().load_all(path)
+        self.buffer=transfer_SRD(self.buffer)
+        self.save_all(path)
 
     def policy_network_from_towers(self, towers):
         batch_size = len(towers)
@@ -174,7 +178,7 @@ class JengaZero(NetAgent):
         # note that the value target is negated.
         # the evaluation measures the value of ENDING at a state
         # the max of the q values is the value of STARTING at a state
-        self.buffer.push(tower, -max(q_value_vector), broken_distribution)
+        self.buffer.push(tower.to_array(), -max(q_value_vector), broken_distribution)
 
         next_state = state.make_move(best_move)
         if random.random() > math.exp(next_state.log_stable_prob):
@@ -187,7 +191,7 @@ class JengaZero(NetAgent):
         sample = self.buffer.sample(batch_size)
 
         batch = State_Reward_Distrib(*zip(*sample))
-        towers = batch.state
+        towers = [tower_from_array(arr) for arr in batch.state]
         rewards = torch.tensor(batch.reward)
         distributions = torch.stack(batch.distribution, dim=0)
         self.optimizer.zero_grad()
@@ -268,4 +272,4 @@ if __name__ == '__main__':
             print('loading from', save_path)
         else:
             print('saving to', save_path)
-    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
+    agent.train(epochs=1420, checkpt_freq=10, checkpt_dir=save_path)

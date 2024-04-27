@@ -2,7 +2,7 @@ import torch.nn as nn
 from src.tower import *
 from src.agent import Agent
 import pickle
-
+from agents.replay_buffer import *
 
 class FFNetwork(nn.Module):
     def __init__(self, layers, activation=None, output_activation=None):
@@ -81,6 +81,7 @@ class NetAgent(Agent):
         for folder in os.listdir(path):
             check = os.path.join(path, folder)
             if os.path.isdir(check) and folder.isnumeric() and self.loadable(check):
+                self.load_all(check)
                 best = max(best, int(folder))
         if best < 0:
             # checkpoint not found

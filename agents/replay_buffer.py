@@ -43,6 +43,15 @@ class ReplayMemory:
         return len(self.memory)
 
 
+def transfer_SRD(buffer:ReplayMemory):
+    temp=ReplayMemory(capacity=buffer.memory.maxlen, namedtup=State_Reward_Distrib)
+    transferring=type(buffer.memory[0].state)==Tower
+    if transferring:
+        print("TRANFERRING")
+    for thingy in buffer.memory:
+        temp.push(thingy.state.to_array() if type(thingy.state)==Tower else thingy.state, thingy.reward, thingy.distribution)
+    return temp
+
 def add_training_data(replay: ReplayMemory, agent1: Agent, agent2: Agent, tower: Tower = None,
                       skip_opponent_step=True):
     """
