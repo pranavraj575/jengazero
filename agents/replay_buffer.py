@@ -7,13 +7,13 @@ import pickle
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'terminal'))
 State_Reward_Distrib = namedtuple('State_Reward_Distrib',
-                        ('state', 'reward', 'distribution'))
+                                  ('state', 'reward', 'distribution'))
 
 
 class ReplayMemory:
-    def __init__(self, capacity=10000,namedtup=Transition):
+    def __init__(self, capacity=10000, namedtup=Transition):
         self.memory = deque([], maxlen=capacity)
-        self.namedtup=namedtup
+        self.namedtup = namedtup
 
     def push(self, *args):
         """Save a transition"""
@@ -21,11 +21,13 @@ class ReplayMemory:
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
+
     def full(self):
         """
         returns whetehr memory is full
         """
-        return len(self.memory)==self.memory.maxlen
+        return len(self.memory) == self.memory.maxlen
+
     def save(self, filename):
         f = open(filename, 'wb')
         pickle.dump(self.memory, f)
@@ -43,6 +45,7 @@ class ReplayMemory:
         return len(self.memory)
 
 
+"""
 def transfer_SRD(buffer:ReplayMemory):
     temp=ReplayMemory(capacity=buffer.memory.maxlen, namedtup=State_Reward_Distrib)
     transferring=type(buffer.memory[0].state)==Tower
@@ -51,6 +54,8 @@ def transfer_SRD(buffer:ReplayMemory):
     for thingy in buffer.memory:
         temp.push(thingy.state.to_array() if type(thingy.state)==Tower else thingy.state, thingy.reward, thingy.distribution)
     return temp
+"""
+
 
 def add_training_data(replay: ReplayMemory, agent1: Agent, agent2: Agent, tower: Tower = None,
                       skip_opponent_step=True):

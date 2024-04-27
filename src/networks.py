@@ -81,7 +81,7 @@ class NetAgent(Agent):
         for folder in os.listdir(path):
             check = os.path.join(path, folder)
             if os.path.isdir(check) and folder.isnumeric() and self.loadable(check):
-                self.load_all(check)
+                # self.load_all(check)
                 best = max(best, int(folder))
         if best < 0:
             # checkpoint not found

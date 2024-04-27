@@ -87,10 +87,11 @@ class JengaZero(NetAgent):
             'move_index_map': self.move_index_map,
             'value_network': value_network,
         }
-    def load_all(self,path):
-        super().load_all(path)
-        self.buffer=transfer_SRD(self.buffer)
-        self.save_all(path)
+
+    # def load_all(self,path):
+    #     super().load_all(path)
+    #     self.buffer=transfer_SRD(self.buffer)
+    #     self.save_all(path)
 
     def policy_network_from_towers(self, towers):
         batch_size = len(towers)
@@ -252,7 +253,7 @@ if __name__ == '__main__':
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
     features = ('nim', nim_featureize, NIM_FEATURESIZE)
-    features = ('union', union_featureize, UNION_FEATURESIZE)
+    # features = ('union', union_featureize, UNION_FEATURESIZE)
 
     ident = 'jengazero_' + features[0] + '_featureset'
 
