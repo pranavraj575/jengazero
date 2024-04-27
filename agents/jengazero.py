@@ -1,3 +1,5 @@
+import os.path
+
 from agents.mcts import *
 from src.networks import *
 from agents.replay_buffer import *
@@ -56,7 +58,8 @@ class JengaZero(NetAgent):
                  ):
         super().__init__()
 
-        output_dim = 3*max_tower_size + 3 + 1
+        self.policy_output_size = 3*max_tower_size + 3
+        output_dim = self.policy_output_size + 1
         layers = [tower_embed_dim] + hidden_layers + [output_dim]
         self.num_iterations = num_iterations
         self.exploration_constant = exploration_constant
@@ -83,49 +86,102 @@ class JengaZero(NetAgent):
 
         value_network = lambda embedding: self.network(embedding)[-1]
 
-        def move_index_map(move):
-            (L, i_remove), i_place = move
-            i = L*3 + i_remove
-            j = i_place
-            return i*3 + j
-
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
             'policy_network': policy_network,
             'embedding': tower_embedder,
-            'move_index_map': move_index_map,
+            'move_index_map': self.move_index_map,
             'value_network': value_network,
         }
 
-    def policy_loss(self, towers, probability_dists):
-        tower_embeddings = torch.tensor([self.tower_embedder(tower) for tower in towers])
-        policies = self.network(tower_embeddings)[:, :-1]
-        pick_result = (policies[:, :-3]).unsqueeze(2)
+    def move_index_map(self, move):
+        (L, i_remove), i_place = move
+        i = L*3 + i_remove
+        j = i_place
+        return i*3 + j
+
+    def large_policy_from_condensed(self, probability_dist):
+        batch_size, _ = probability_dist.shape
         # N X D X 1
-        place_result = (policies[:, -3:]).unsqueeze(1)
+        pick_result = (probability_dist[:, :-3]).unsqueeze(2)
+
         # N X 1 X 3
-        policies = torch.bmm(pick_result, place_result).reshape((-1, 1))
+        place_result = (probability_dist[:, -3:]).unsqueeze(1)
+
         # N x |DIST|
+        return torch.bmm(pick_result, place_result).reshape((batch_size, -1))
+
+    def policy_loss(self, towers, probability_dist_targets):
+        tower_embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
+
+        large_targets = self.large_policy_from_condensed(probability_dist_targets)
+        policies = self.large_policy_from_condensed(self.network(tower_embeddings)[:, :-1])
 
         criterion = nn.CrossEntropyLoss()
-        loss = criterion(policies, probability_dists)
-        loss.backward()
+        loss = criterion(policies, large_targets)
         return loss
 
     def value_loss(self, towers, targets):
-        tower_embeddings = torch.tensor([self.tower_embedder(tower) for tower in towers])
+        tower_embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
         values = self.network(tower_embeddings)[:, -1]
         criterion = nn.SmoothL1Loss()
         loss = criterion(values, targets)
-        loss.backward()
         return loss
 
-    def add_training_data(self, tower):
-        best_move,root_node=mcts_search(root_state=NNState(tower=tower),
-                    iterations=self.num_iterations,
-                    exploration_constant=self.exploration_constant,
-                    params={self.params},
-                    mode="alphazero")
+    def add_training_data(self, tower, depth=float('inf')):
+        print('adding data for ', end='')
+        print(tower)
+        if depth <= 0:
+            return
+        state = NNState(tower=tower)
+        best_move, root_node = mcts_search(root_state=state,
+                                           iterations=self.num_iterations,
+                                           exploration_constant=self.exploration_constant,
+                                           params=self.params,
+                                           mode='alphazero')
+        # UNORDERED q_value vector of moves to values
+        q_value_vector = [child.get_exploit_score() for child in root_node.children]
+        moves_taken = [child.state.last_move for child in root_node.children]
+
+        broken_distribution = torch.zeros(self.policy_output_size)
+        unordered_distribution = torch.softmax(torch.tensor(q_value_vector), 0)
+
+        pick_distribution = torch.zeros(self.policy_output_size - 3)
+        place_distribution = torch.zeros(3)
+        for i in range(len(unordered_distribution)):
+            (L, pick_i), place = moves_taken[i]
+            place_distribution[place] += unordered_distribution[i]
+            pick_distribution[3*L + pick_i] += unordered_distribution[i]
+
+        broken_distribution[:-3] = pick_distribution
+        broken_distribution[-3:] = place_distribution
+
+        self.buffer.push(tower, max(q_value_vector), broken_distribution)
+        next_state = state.make_move(best_move)
+        if random.random() > math.exp(next_state.log_stable_prob):
+            return
+        if next_state.num_legal_moves == 0:
+            return
+        self.add_training_data(next_state.tower, depth=depth - 1)
+
+    def training_step(self, batch_size=128):
+        sample = self.buffer.sample(batch_size)
+
+        batch = State_Reward_Distrib(*zip(*sample))
+        towers = batch.state
+        rewards = torch.tensor(batch.reward)
+        distributions = torch.stack(batch.distribution, dim=0)
+        self.optimizer.zero_grad()
+        val_loss = self.value_loss(towers, rewards)
+        pol_loss = self.policy_loss(towers, distributions)
+        overall_loss = val_loss + pol_loss
+        overall_loss.backward()
+        self.optimizer.step()
+    def train(self,epochs=1,agent_pairs=None, testing_agent=None, checkpt_dir=None, checkpt_freq=10,batch_size=128):
+        while self.buffer.size()<batch_size:
+            self.add_training_data(Tower(),depth=batch_size-self.buffer.size())
+
+
 
     def pick_move(self, tower: Tower):
         root_state = NNState(tower=tower)
@@ -135,3 +191,23 @@ class JengaZero(NetAgent):
                                            params={self.params},
                                            mode="alphazero")
         return best_move
+
+
+if __name__ == '__main__':
+    seed(69)
+    DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+
+    save_path = os.path.join(DIR, 'jengazero_test')
+
+    agent = JengaZero([128, 128],
+                      num_iterations=1000,
+                      tower_embedder=lambda tower:
+                      torch.tensor(union_featureize(tower=tower), dtype=torch.float),
+                      tower_embed_dim=UNION_FEATURESIZE)
+    if os.path.exists(save_path):
+
+        agent.load_all(save_path)
+    else:
+        agent.add_training_data(Tower(), depth=2)
+        agent.save_all(save_path)
+    agent.training_step(batch_size=2)

@@ -6,7 +6,7 @@ import pickle
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'terminal'))
-State_Reward_Distrib = namedtuple('SRD',
+State_Reward_Distrib = namedtuple('State_Reward_Distrib',
                         ('state', 'reward', 'distribution'))
 
 

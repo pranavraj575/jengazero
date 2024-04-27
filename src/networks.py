@@ -140,7 +140,7 @@ NIM_FEATURESIZE = (max_mod - 2)*(4 + 1 + 1)
 
 def union_featureize(tower: Tower, MAX_HEIGHT=INITIAL_SIZE*3):
     return np.concatenate((
-        union_featureize(tower, MAX_HEIGHT=MAX_HEIGHT),
+        basic_featurize(tower, MAX_HEIGHT=MAX_HEIGHT),
         nim_featureize(tower=tower)))
 
 
