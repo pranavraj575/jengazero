@@ -170,7 +170,11 @@ class JengaZero(NetAgent):
         broken_distribution[:-3] = pick_distribution
         broken_distribution[-3:] = place_distribution
 
-        self.buffer.push(tower, max(q_value_vector), broken_distribution)
+        # note that the value target is negated.
+        # the evaluation measures the value of ENDING at a state
+        # the max of the q values is the value of STARTING at a state
+        self.buffer.push(tower, -max(q_value_vector), broken_distribution)
+
         next_state = state.make_move(best_move)
         if random.random() > math.exp(next_state.log_stable_prob):
             return
@@ -263,4 +267,4 @@ if __name__ == '__main__':
             print('loading from', save_path)
         else:
             print('saving to', save_path)
-    agent.train(epochs=420, checkpt_freq=5, checkpt_dir=save_path)
+    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
