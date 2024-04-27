@@ -1,6 +1,5 @@
 /.idea
 __pycache__
-/jengazebo.egg-info
 /jengazero.egg-info
 /data/*/checkpoints
 /jengazero_data/*/checkpoints
