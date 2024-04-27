@@ -60,7 +60,7 @@ if __name__ == '__main__':
     seed(69)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-    save_dir = os.path.join(DIR, 'games', 'without_jz_union')
+    save_dir = os.path.join(DIR, 'games', 'all_agents')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
             dqn_basic,
             MCTS_player(num_iterations=num_iterations),
             jz_nim,
-            # jz_union
+            jz_union
         ]
         if loadable(save_dir):
             old_elos, old_win_counts = load_all(save_dir)
