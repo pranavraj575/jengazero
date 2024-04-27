@@ -99,9 +99,16 @@ if __name__ == '__main__':
             print(win_rate_matrix)
             print('elos:')
             print(old_elos)
+            print(' & '.join([str(round(elo)) for elo in old_elos]))
 
             plt.rcParams.update({'font.size': 15})
-            agents = ["Random", "1-Step", "DQN-Nim", "DQN-Basic", "MCTS", "JengaZero-Union", "JengaZero-Nim"]
+            agents = ["Random",
+                      "1-Step",
+                      "DQN-Nim",
+                      "DQN-Basic",
+                      "MCTS",
+                      "JengaZero-Union",
+                      "JengaZero-Nim"]
 
             # Create a heatmap
             plt.figure(figsize=(10, 8))  # Set the figure size
