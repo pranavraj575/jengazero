@@ -69,7 +69,7 @@ class JengaZero(NetAgent):
         self.tower_embedder = tower_embedder
         self.tower_embed_dim = tower_embed_dim
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)
-        self.buffer = ReplayMemory(namedtup=State_Reward_Distrib)
+        self.buffer = ReplayMemory(capacity=128, namedtup=State_Reward_Distrib)
 
         self.info = dict()
         self.info['epochs_trained'] = 0
@@ -129,10 +129,10 @@ class JengaZero(NetAgent):
         return loss
 
     def add_training_data(self, tower, depth=float('inf')):
-        print('adding data for ', end='')
-        print(tower)
         if depth <= 0:
             return
+        print('adding data for ', end='')
+        print(tower)
         state = NNState(tower=tower)
         best_move, root_node = mcts_search(root_state=state,
                                            iterations=self.num_iterations,
@@ -164,7 +164,7 @@ class JengaZero(NetAgent):
             return
         self.add_training_data(next_state.tower, depth=depth - 1)
 
-    def training_step(self, batch_size=128):
+    def training_step(self, batch_size=64):
         sample = self.buffer.sample(batch_size)
 
         batch = State_Reward_Distrib(*zip(*sample))
@@ -177,11 +177,32 @@ class JengaZero(NetAgent):
         overall_loss = val_loss + pol_loss
         overall_loss.backward()
         self.optimizer.step()
-    def train(self,epochs=1,agent_pairs=None, testing_agent=None, checkpt_dir=None, checkpt_freq=10,batch_size=128):
-        while self.buffer.size()<batch_size:
-            self.add_training_data(Tower(),depth=batch_size-self.buffer.size())
 
+    def train(self, epochs=1, testing_agent=None, checkpt_dir=None, checkpt_freq=10, batch_size=64):
+        testing_N = 10
+        if self.info['epochs_trained'] == 0 and testing_agent is not None:
+            win_rate = self.test_against(testing_agent, N=testing_N)
+            print('epoch:', self.info['epochs_trained'], 'win_rate:', win_rate)
+            self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
 
+        while self.buffer.size() < batch_size:
+            self.add_training_data(Tower(), depth=batch_size - self.buffer.size())
+
+        for epoch in range(epochs - self.info['epochs_trained']):
+            self.add_training_data(Tower())
+            self.training_step(batch_size=batch_size)
+
+            if testing_agent is not None:
+                win_rate = self.test_against(testing_agent, N=testing_N)
+                print('epoch:', self.info['epochs_trained'], 'win_rate:', win_rate)
+                self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
+
+            if self.info['epochs_trained']%checkpt_freq == 0:
+                if checkpt_dir is not None:
+                    folder = os.path.join(checkpt_dir, 'checkpoints', str(self.info['epochs_trained']))
+                    if not os.path.exists(folder):
+                        os.makedirs(folder)
+                    self.save_all(folder)
 
     def pick_move(self, tower: Tower):
         root_state = NNState(tower=tower)
@@ -197,17 +218,14 @@ if __name__ == '__main__':
     seed(69)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-    save_path = os.path.join(DIR, 'jengazero_test')
+    save_path = os.path.join(DIR,'data', 'jengazero_test')
 
     agent = JengaZero([128, 128],
-                      num_iterations=1000,
+                      num_iterations=500,
                       tower_embedder=lambda tower:
                       torch.tensor(union_featureize(tower=tower), dtype=torch.float),
                       tower_embed_dim=UNION_FEATURESIZE)
+    print(UNION_FEATURESIZE)
     if os.path.exists(save_path):
-
         agent.load_all(save_path)
-    else:
-        agent.add_training_data(Tower(), depth=2)
-        agent.save_all(save_path)
-    agent.training_step(batch_size=2)
+    agent.train(epochs=100,checkpt_freq=1,checkpt_dir=save_path)
