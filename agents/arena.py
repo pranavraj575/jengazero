@@ -16,7 +16,8 @@ def update_elos(agents, num_rounds=1, initial_elos=None, initial_win_counts=None
     # initially all elos are 100
     if initial_win_counts is None:
         initial_win_counts = np.array([[0 for _ in range(len(agents))] for _ in range(len(agents))])
-
+    # adds 2*num_rounds to the total number of games played
+    total_games=2*num_rounds+initial_win_counts[0][1]+initial_win_counts[1][0]
     for i in range(len(agents)):
         for j in range(len(agents)):
             if i != j:
@@ -35,7 +36,7 @@ def update_elos(agents, num_rounds=1, initial_elos=None, initial_win_counts=None
             if i != j:
                 # update agent i's elo based on winrate against j
                 expected_score = 1.0/(1.0 + math.pow(10, -(initial_elos[i] - initial_elos[j])/400.0))
-                real_score = initial_win_counts[i][j]/(2*num_rounds)
+                real_score = initial_win_counts[i][j]/total_games
                 new_elos[i] += 69*(real_score - expected_score)
     return new_elos, initial_win_counts
 
@@ -76,7 +77,7 @@ if __name__ == '__main__':
     jz_union = JengaZero([128, 128], union_featureize, UNION_FEATURESIZE, num_iterations=num_iterations)
     jz_union.load_all(os.path.join(DIR, 'jengazero_data', 'jengazero_union_featureset'))
 
-    for _ in range(100):
+    for _ in range(1000):
         all_agents = [
             Randy(),
             SmartRandy(),
@@ -90,7 +91,7 @@ if __name__ == '__main__':
             old_elos, old_win_counts = load_all(save_dir)
         else:
             old_elos = [1000 for _ in range(len(all_agents))]
-            old_win_counts = [[0 for _ in range(len(all_agents))] for _ in range(len(all_agents))]
+            old_win_counts = np.array([[0 for _ in range(len(all_agents))] for _ in range(len(all_agents))])
 
         new_elos, new_win_counts = update_elos(all_agents, initial_elos=old_elos, initial_win_counts=old_win_counts)
         # new_win_counts = old_win_counts + win_counts
