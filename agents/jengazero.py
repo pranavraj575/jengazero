@@ -40,9 +40,8 @@ class NNState(State):
 
     def policy(self, move, params):
         if self.policy_dist is None:
-            network = params['policy_network']  # tower embedding -> policy
-            tower_embedding = params['embedding']  # tower -> embedding
-            self.policy_dist = network(tower_embedding(self.tower))
+            network = params['policy_network_from_tower']  # tower -> policy
+            self.policy_dist = network(self.tower)
         move_index_map = params['move_index_map']  # move -> index (of policy network output)
         return self.policy_dist[move_index_map(move)]
 
@@ -82,16 +81,31 @@ class JengaZero(NetAgent):
 
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
-            'policy_network': lambda embedding: self.policy_network(embedding).flatten(),
+            'policy_network_from_tower': lambda tower: self.policy_network_from_towers([tower]).flatten(),
             'embedding': tower_embedder,
             'move_index_map': self.move_index_map,
             'value_network': value_network,
         }
 
-    def policy_network(self, embeddings):
+    def policy_network_from_towers(self, towers):
+        batch_size = len(towers)
+        valid_moves = [tower.valid_moves_product() for tower in towers]
+        mask = torch.ones((batch_size, self.policy_output_size), dtype=torch.bool)
+        for k, (removes, places) in enumerate(valid_moves):
+            for (L, i) in removes:
+                mask[k, 3*L + i] = False
+            for i in places:
+                mask[k, i - 3] = False  # either -3,-2,-1, so still works
+
+        embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
+
+        return self.policy_network(embeddings=embeddings, mask=mask)
+
+    def policy_network(self, embeddings, mask):
         if len(embeddings.shape) == 1:
             embeddings = embeddings.unsqueeze(0)
         pre_softmax_condensed = self.network(embeddings)[:, :-1]
+        pre_softmax_condensed = pre_softmax_condensed.masked_fill(mask, float(-1e32))
         condensed = torch.zeros_like(pre_softmax_condensed)
         condensed[:, :-3] = torch.nn.Softmax(dim=-1)(pre_softmax_condensed[:, :-3])
         condensed[:, -3:] = torch.nn.Softmax(dim=-1)(pre_softmax_condensed[:, -3:])
@@ -116,11 +130,8 @@ class JengaZero(NetAgent):
         return torch.bmm(pick_result, place_result).reshape((batch_size, -1))
 
     def policy_loss(self, towers, probability_dist_targets):
-        tower_embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
-
         large_targets = self.large_policy_from_condensed(probability_dist_targets)
-        policies = self.policy_network(tower_embeddings)
-
+        policies = self.policy_network_from_towers(towers)
         criterion = nn.CrossEntropyLoss()
         loss = criterion(policies, large_targets)
         return loss
@@ -200,8 +211,8 @@ class JengaZero(NetAgent):
             val_loss, pol_loss = self.training_step(batch_size=batch_size)
             self.info['epochs_trained'] += 1
             self.info['losses'].append((self.info['epochs_trained'], val_loss.item(), pol_loss.item()))
-            print('losses',self.info['losses'][-1])
-            print('time',round(time.time()-starting_time),'seconds')
+            print('losses', self.info['losses'][-1])
+            print('time', round(time.time() - starting_time), 'seconds')
             print()
 
             if testing_agent is not None:
@@ -231,7 +242,7 @@ if __name__ == '__main__':
 
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-    save_path = os.path.join(DIR, 'data', 'jengazero_nim_featureset')
+    save_path = os.path.join(DIR, 'jengazero_data', 'jengazero_nim_featureset')
 
     agent = JengaZero([128, 128],
                       num_iterations=1000,
@@ -242,4 +253,4 @@ if __name__ == '__main__':
         agent.load_all(save_path)
     else:
         agent.load_last_checkpoint(save_path)
-    agent.train(epochs=420, checkpt_freq=1, checkpt_dir=save_path)
+    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
