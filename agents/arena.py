@@ -91,7 +91,7 @@ if __name__ == '__main__':
             old_elos, old_win_counts = load_all(save_dir)
             print('loaded data from', save_dir)
             print('win matrix:')
-            print(old_win_counts)
+            print(np.round(old_win_counts/(old_win_counts[0][1] + old_win_counts[1][0]), 2))
             print('elos:')
             print(old_elos)
         else:
