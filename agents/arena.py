@@ -1,3 +1,4 @@
+import math
 from src.agent import *
 from agents.randy import Randy,SmartRandy
 from agents.dqn import DQN_player
@@ -32,3 +33,26 @@ for i in range(10):
         loser[1] += 1
         print('mcts lost')
 print(loser)
+
+
+def update_elos(initial_elos, num_rounds, agents):
+    # initially all elos are 100
+    win_counts = [[0] * len(agents)] * len(agents)
+    for i in range(len(agents)):
+        for j in range(len(agents)):
+            if i != j:
+                for _ in range(num_rounds):
+                    result = outcome([agents[i], agents[j]], Tower())[0]
+                    win_counts[i][j] += result
+                    win_counts[j][i] += 1-result
+
+    new_elos = initial_elos.copy()
+    for i in range(len(agents)):
+        for j in range(len(agents)):
+            if i != j:
+                # update agent i's elo based on winrate against j
+                expected_score = 1.0/1.0+math.exp(-(initial_elos[i] - initial_elos[j])/400.0)
+                new_elos[i] += 80 * (win_counts[i][j]/num_rounds - expected_score)
+    return new_elos
+
+
