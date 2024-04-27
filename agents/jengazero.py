@@ -247,7 +247,7 @@ if __name__ == '__main__':
 
     ident = 'jengazero_' + features[0] + '_featureset'
 
-    save_path = os.path.join(DIR, 'jengazero_data', 'jengazero_nim_featureset')
+    save_path = os.path.join(DIR, 'jengazero_data', ident)
 
     agent = JengaZero([128, 128],
                       num_iterations=1000,
