@@ -99,6 +99,8 @@ if __name__ == '__main__':
             print(win_rate_matrix)
             print('elos:')
             print(old_elos)
+
+            plt.rcParams.update({'font.size': 15})
             agents = ["Random", "1-Step", "DQN-Nim", "DQN-Basic", "MCTS", "JengaZero-Union", "JengaZero-Nim"]
 
             # Create a heatmap
@@ -106,8 +108,9 @@ if __name__ == '__main__':
             ax = sns.heatmap(win_rate_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5,
                             xticklabels=agents, yticklabels=agents)
             plt.title('Win Rate Heat Map')
-            plt.xlabel('Agent 2')
-            plt.ylabel('Agent 1')
+            plt.xlabel('Opponent')
+            plt.ylabel('Player')
+            plt.savefig(os.path.join(save_dir,'win_rate_matrix.png'),bbox_inches='tight')
             plt.show()
         else:
             old_elos = [1000 for _ in range(len(all_agents))]
