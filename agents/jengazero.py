@@ -75,24 +75,23 @@ class JengaZero(NetAgent):
         self.info['epochs_trained'] = 0
         self.info['test win rate'] = []
 
-        def policy_network(embedding):
-            """
-            assumes
-            """
-            result = self.network(embedding)[:-1]
-            pick_result = result[:-3]
-            place_result = result[-3:]
-            return (pick_result.reshape((-1, 1))@place_result.reshape((1, -1))).flatten()
-
         value_network = lambda embedding: self.network(embedding)[-1]
 
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
-            'policy_network': policy_network,
+            'policy_network': lambda embedding:self.policy_network(embedding).flatten(),
             'embedding': tower_embedder,
             'move_index_map': self.move_index_map,
             'value_network': value_network,
         }
+
+    def policy_network(self, embeddings):
+        if len(embeddings.shape)==1:
+            embeddings=embeddings.unsqueeze(0)
+        condensed = self.network(embeddings)[:, :-1]
+        out= self.large_policy_from_condensed(condensed)
+        print(out)
+        return(out)
 
     def move_index_map(self, move):
         (L, i_remove), i_place = move
@@ -115,7 +114,7 @@ class JengaZero(NetAgent):
         tower_embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
 
         large_targets = self.large_policy_from_condensed(probability_dist_targets)
-        policies = self.large_policy_from_condensed(self.network(tower_embeddings)[:, :-1])
+        policies = self.policy_network(tower_embeddings)
 
         criterion = nn.CrossEntropyLoss()
         loss = criterion(policies, large_targets)
