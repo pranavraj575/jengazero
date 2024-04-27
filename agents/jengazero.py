@@ -221,7 +221,7 @@ if __name__ == '__main__':
     save_path = os.path.join(DIR,'data', 'jengazero_test')
 
     agent = JengaZero([128, 128],
-                      num_iterations=500,
+                      num_iterations=1000,
                       tower_embedder=lambda tower:
                       torch.tensor(union_featureize(tower=tower), dtype=torch.float),
                       tower_embed_dim=UNION_FEATURESIZE)
