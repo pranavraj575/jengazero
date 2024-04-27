@@ -69,7 +69,7 @@ class JengaZero(NetAgent):
         self.tower_embedder = tower_embedder
         self.tower_embed_dim = tower_embed_dim
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)
-        self.buffer = ReplayMemory(capacity=128, namedtup=State_Reward_Distrib)
+        self.buffer = ReplayMemory(capacity=1024, namedtup=State_Reward_Distrib)
 
         self.info = dict()
         self.info['epochs_trained'] = 0
@@ -166,7 +166,7 @@ class JengaZero(NetAgent):
             return
         self.add_training_data(next_state.tower, depth=depth - 1)
 
-    def training_step(self, batch_size=64):
+    def training_step(self, batch_size):
         sample = self.buffer.sample(batch_size)
 
         batch = State_Reward_Distrib(*zip(*sample))
@@ -181,7 +181,7 @@ class JengaZero(NetAgent):
         self.optimizer.step()
         return val_loss, pol_loss
 
-    def train(self, epochs=1, testing_agent=None, checkpt_dir=None, checkpt_freq=10, batch_size=64):
+    def train(self, epochs=1, testing_agent=None, checkpt_dir=None, checkpt_freq=10, batch_size=128):
         testing_N = 10
         if self.info['epochs_trained'] == 0 and testing_agent is not None:
             win_rate = self.test_against(testing_agent, N=testing_N)
