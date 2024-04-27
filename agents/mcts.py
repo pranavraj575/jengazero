@@ -183,11 +183,11 @@ class Node:
             exploration_term = 0.0
 
             if mode == "default":
-                exploration_term = self.exploration_constant * math.sqrt(math.log(self.visits)/child.visits)
+                exploration_term = self.exploration_constant*math.sqrt(math.log(self.visits)/child.visits)
             if mode == "alphazero":
                 move_made = child.state.last_move
                 policy_prob = self.state.policy(move_made, params=params)
-                exploration_term = self.exploration_constant * policy_prob * math.sqrt(self.visits / (1.0 + child.visits))
+                exploration_term = self.exploration_constant*policy_prob*math.sqrt(self.visits/(1.0 + child.visits))
 
             score = exploitation_term + exploration_term
             if score > best_score:
@@ -254,7 +254,7 @@ def mcts_search(root_state,
                 termination = 'unexplored child node'
                 break
             else:
-                node = node.select_child(params=params)
+                node = node.select_child(params=params, mode=mode)
                 # print(f'{node.state.tower}\tlog stable prob = {node.state.log_stable_prob:.4f}')
             if random.random() > math.exp(node.state.log_stable_prob):
                 termination = 'fell'
