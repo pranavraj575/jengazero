@@ -9,6 +9,10 @@ from agents.jengazero import JengaZero
 from src.networks import *
 import pickle
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
 
 def update_elos(agents, num_rounds=1, initial_elos=None, initial_win_counts=None):
     if initial_elos is None:
@@ -91,9 +95,20 @@ if __name__ == '__main__':
             old_elos, old_win_counts = load_all(save_dir)
             print('loaded data from', save_dir)
             print('win matrix:')
-            print(np.round(old_win_counts/(old_win_counts[0][1] + old_win_counts[1][0]), 2))
+            win_rate_matrix = np.round(old_win_counts/(old_win_counts[0][1] + old_win_counts[1][0]), 2)
+            print(win_rate_matrix)
             print('elos:')
             print(old_elos)
+            agents = ["Random", "1-Step", "DQN-Nim", "DQN-Basic", "MCTS", "JengaZero-Union", "JengaZero-Nim"]
+
+            # Create a heatmap
+            plt.figure(figsize=(10, 8))  # Set the figure size
+            ax = sns.heatmap(win_rate_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5,
+                            xticklabels=agents, yticklabels=agents)
+            plt.title('Win Rate Heat Map')
+            plt.xlabel('Agent 2')
+            plt.ylabel('Agent 1')
+            plt.show()
         else:
             old_elos = [1000 for _ in range(len(all_agents))]
             old_win_counts = np.array([[0 for _ in range(len(all_agents))] for _ in range(len(all_agents))])
@@ -103,3 +118,4 @@ if __name__ == '__main__':
         save_all(save_dir, new_elos, new_win_counts)
         print(new_win_counts)
         print(new_elos)
+
