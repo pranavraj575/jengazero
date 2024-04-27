@@ -134,8 +134,8 @@ class JengaZero(NetAgent):
     def add_training_data(self, tower, depth=float('inf')):
         if depth <= 0:
             return
-        print('adding data for ', end='')
-        print(tower)
+        # print('adding data for ', end='')
+        # print(tower)
         state = NNState(tower=tower)
         best_move, root_node = mcts_search(root_state=state,
                                            iterations=self.num_iterations,
@@ -189,13 +189,17 @@ class JengaZero(NetAgent):
             self.info['test win rate'].append((self.info['epochs_trained'], win_rate))
 
         while self.buffer.size() < batch_size:
+            print('adding training data to get', self.buffer.size(), 'to batch size', batch_size)
             self.add_training_data(Tower(), depth=batch_size - self.buffer.size())
-
-        for epoch in range(epochs - self.info['epochs_trained']):
+        already_epoched = self.info['epochs_trained']
+        for epoch in range(epochs - already_epoched):
+            print('training epoch ', self.info['epochs_trained'])
             self.add_training_data(Tower())
             val_loss, pol_loss = self.training_step(batch_size=batch_size)
             self.info['epochs_trained'] += 1
             self.info['losses'].append((self.info['epochs_trained'], val_loss.item(), pol_loss.item()))
+            print('losses',self.info['losses'][-1])
+            print()
 
             if testing_agent is not None:
                 win_rate = self.test_against(testing_agent, N=testing_N)
