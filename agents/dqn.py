@@ -229,15 +229,14 @@ class DQN_player(NetAgent):
                     self.save_all(folder)
 
 
-
 if __name__ == "__main__":
     from agents.determined import FastPick
     from agents.randy import Randy, SmartRandy
 
     embedding = ('basic', basic_featurize, BASIC_FEATURESIZE)
-    # embedding = ('nim', nim_featureize, NIM_FEATURESIZE)
+    embedding = ('nim', nim_featureize, NIM_FEATURESIZE)
     opponent = ('random', Randy())
-    # opponent = ('smart_random', SmartRandy())
+    opponent = ('smart_random', SmartRandy())
 
     epochs = 50
     hidden_layers = [256]
@@ -245,14 +244,20 @@ if __name__ == "__main__":
     for size in hidden_layers:
         hidden_str += '_' + str(size)
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-    save_path = os.path.join(DIR, 'data',
-                             'dqn_against_' +
-                             opponent[0] + '_' +
-                             str(epochs) +
-                             '_epochs_towersize_' +
-                             str(INITIAL_SIZE) +
-                             '_hidden_layers' + hidden_str +
-                             '_embedding_' + embedding[0]
+
+    ident = 'dqn_against_'
+    ident += (opponent[0] + '_' +
+              str(epochs) +
+              '_epochs')
+    if embedding[0] != 'nim':
+        ident += (
+                '_towersize_' +
+                str(INITIAL_SIZE))
+    ident += (
+            '_hidden_layers' + hidden_str +
+            '_embedding_' + embedding[0])
+
+    save_path = os.path.join(DIR, 'data',ident
                              )
     print('saving to', save_path)
     seed(42069)

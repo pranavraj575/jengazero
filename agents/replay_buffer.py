@@ -6,15 +6,18 @@ import pickle
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'terminal'))
+State_Reward_Distrib = namedtuple('SRD',
+                        ('state', 'reward', 'distribution'))
 
 
 class ReplayMemory:
-    def __init__(self, capacity=10000):
+    def __init__(self, capacity=10000,namedtup=Transition):
         self.memory = deque([], maxlen=capacity)
+        self.namedtup=namedtup
 
     def push(self, *args):
         """Save a transition"""
-        self.memory.append(Transition(*args))
+        self.memory.append(self.namedtup(*args))
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
