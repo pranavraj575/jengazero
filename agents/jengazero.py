@@ -247,7 +247,7 @@ if __name__ == '__main__':
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
     features = ('nim', nim_featureize, NIM_FEATURESIZE)
-    #features = ('union', union_featureize, UNION_FEATURESIZE)
+    features = ('union', union_featureize, UNION_FEATURESIZE)
 
     ident = 'jengazero_' + features[0] + '_featureset'
 
