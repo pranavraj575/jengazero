@@ -52,7 +52,7 @@ def update_elos(initial_elos, num_rounds, agents):
             if i != j:
                 # update agent i's elo based on winrate against j
                 expected_score = 1.0/1.0+math.exp(-(initial_elos[i] - initial_elos[j])/400.0)
-                new_elos[i] += 80 * (win_counts[i][j]/num_rounds - expected_score)
+                new_elos[i] += 80 * (win_counts[i][j]/num_roxunds - expected_score)
     return new_elos
 
 
