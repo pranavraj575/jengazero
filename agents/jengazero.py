@@ -5,6 +5,7 @@ from src.networks import *
 from agents.replay_buffer import *
 from src.tower import INITIAL_SIZE
 import torch
+import time
 
 
 class NNState(State):
@@ -193,12 +194,14 @@ class JengaZero(NetAgent):
             self.add_training_data(Tower(), depth=batch_size - self.buffer.size())
         already_epoched = self.info['epochs_trained']
         for epoch in range(epochs - already_epoched):
+            starting_time = time.time()
             print('training epoch ', self.info['epochs_trained'])
             self.add_training_data(Tower())
             val_loss, pol_loss = self.training_step(batch_size=batch_size)
             self.info['epochs_trained'] += 1
             self.info['losses'].append((self.info['epochs_trained'], val_loss.item(), pol_loss.item()))
             print('losses',self.info['losses'][-1])
+            print('time',round(time.time()-starting_time),'seconds')
             print()
 
             if testing_agent is not None:
@@ -225,6 +228,7 @@ class JengaZero(NetAgent):
 
 if __name__ == '__main__':
     seed(69)
+
     DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 
     save_path = os.path.join(DIR, 'data', 'jengazero_nim_featureset')
