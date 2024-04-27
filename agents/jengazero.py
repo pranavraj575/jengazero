@@ -255,7 +255,12 @@ if __name__ == '__main__':
                       torch.tensor(features[1](tower), dtype=torch.float),
                       tower_embed_dim=features[2])
     if agent.loadable(save_path):
+        print('loading from', save_path)
         agent.load_all(save_path)
     else:
-        agent.load_last_checkpoint(save_path)
+        checked = agent.load_last_checkpoint(save_path)
+        if checked:
+            print('loading from', save_path)
+        else:
+            print('saving to', save_path)
     agent.train(epochs=420, checkpt_freq=5, checkpt_dir=save_path)
