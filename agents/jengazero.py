@@ -35,9 +35,8 @@ class NNState(State):
         if easy_result is not None:
             return easy_result
 
-        network = params['value_network']  # tower embedding -> value (of ending at a tower)
-        tower_embedding = params['embedding']  # tower -> embedding
-        return network(tower_embedding(self.tower))
+        network = params['value_network_from_tower']  # tower -> value (of ending at a tower)
+        return network(self.tower)
 
     def policy(self, move, params):
         if self.policy_dist is None:
@@ -83,9 +82,8 @@ class JengaZero(NetAgent):
         # params will eventually be passed to NNState.evaluate and NNState.policy
         self.params = {
             'policy_network_from_tower': lambda tower: self.policy_network_from_towers([tower]).flatten(),
-            'embedding': tower_embedder,
             'move_index_map': self.move_index_map,
-            'value_network': value_network,
+            'value_network_from_tower': lambda tower: self.value_network_from_towers([tower]).flatten(),
         }
 
     # def load_all(self,path):
@@ -103,7 +101,7 @@ class JengaZero(NetAgent):
             for i in places:
                 mask[k, i - 3] = False  # either -3,-2,-1, so still works
 
-        embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
+        embeddings = torch.stack([torch.tensor(self.tower_embedder(tower),dtype=torch.float) for tower in towers], dim=0)
 
         return self.policy_network(embeddings=embeddings, mask=mask)
 
@@ -117,6 +115,43 @@ class JengaZero(NetAgent):
         condensed[:, -3:] = torch.nn.Softmax(dim=-1)(pre_softmax_condensed[:, -3:])
 
         return self.large_policy_from_condensed(condensed)
+
+    def eval_of_STARTING_at_tower(self, tower: Tower):
+        """
+        returns value of STARTING at tower
+        note this is different from value network, which returns value of ENDING at tower
+        takes max of q-values
+        """
+        if tower.has_valid_moves():
+            return max(self.q_value(tower, action=action) for action in tower.valid_moves())
+        else:
+            return -1
+
+    def q_value(self, tower: Tower, action, network=None):
+        """
+        returns Q-value of tower-action pair
+            network is self.network if not specified
+        """
+        remove, place = action
+        guess_tower, log_prob_stable = tower.play_move_log_probabilistic(remove, place)
+        prob_stable = math.exp(log_prob_stable)
+        if guess_tower.has_valid_moves():
+            guesstimate = self.value_network_from_towers([guess_tower]).flatten().item()
+        else:
+            # here we win if the tower does not fall
+            guesstimate = 1
+
+        # if falls then q-value is -1, otherwise, guess it with tower
+        return prob_stable*guesstimate + (1 - prob_stable)*(-1)
+
+    def value_network_from_towers(self, towers):
+        embeddings = torch.stack([torch.tensor(self.tower_embedder(tower),dtype=torch.float) for tower in towers], dim=0)
+        return self.value_network(embeddings)
+
+    def value_network(self, embeddings):
+        if len(embeddings.shape) == 1:
+            embeddings = embeddings.unsqueeze(0)
+        return self.network(embeddings)[:, -1]
 
     def move_index_map(self, move):
         (L, i_remove), i_place = move
@@ -236,14 +271,16 @@ class JengaZero(NetAgent):
                     if not os.path.exists(folder):
                         os.makedirs(folder)
                     self.save_all(folder)
-                    self.save_all(checkpt_dir) # save to the folder itself as well
+                    self.save_all(checkpt_dir)  # save to the folder itself as well
 
-    def pick_move(self, tower: Tower):
+    def pick_move(self, tower: Tower, num_iterations=None):
+        if num_iterations is None:
+            num_iterations = self.num_iterations
         root_state = NNState(tower=tower)
         best_move, root_node = mcts_search(root_state=root_state,
-                                           iterations=self.num_iterations,
+                                           iterations=num_iterations,
                                            exploration_constant=self.exploration_constant,
-                                           params={self.params},
+                                           params=self.params,
                                            mode="alphazero")
         return best_move
 
@@ -274,4 +311,7 @@ if __name__ == '__main__':
             print('loading from', save_path)
         else:
             print('saving to', save_path)
-    agent.train(epochs=1420, checkpt_freq=10, checkpt_dir=save_path)
+    agent.train(epochs=420, checkpt_freq=10, checkpt_dir=save_path)
+    t = Tower()
+    t, _ = t.play_move_log_probabilistic((0, 2), 1)
+    print(agent.heatmap(t))

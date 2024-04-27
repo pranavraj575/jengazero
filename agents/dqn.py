@@ -236,7 +236,7 @@ if __name__ == "__main__":
     embedding = ('basic', basic_featurize, BASIC_FEATURESIZE)
     embedding = ('nim', nim_featureize, NIM_FEATURESIZE)
     opponent = ('random', Randy())
-    opponent = ('smart_random', SmartRandy())
+    # opponent = ('smart_random', SmartRandy())
 
     epochs = 50
     hidden_layers = [256]
