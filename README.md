@@ -6,5 +6,5 @@ Tested with Python 3.8 on Ubuntu 20.04
 * Install stuff with ```pip3 install -e .``` run within the ```jengazero``` directory
 
 ## running
-run ```arena.py``` to make all the guys fight
+run ```agents/arena.py``` to make all the guys fight
 
