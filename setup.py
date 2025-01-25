@@ -8,6 +8,7 @@ setup(
     install_requires=['numpy',
                       'scipy',
                       'torch',
+                      'seaborn',
                       ],
     license='Liscence to Krill',
 )

@@ -180,12 +180,25 @@ class JengaZero(NetAgent):
         # N x |DIST|
         return torch.bmm(pick_result, place_result).reshape((batch_size, -1))
 
-    def policy_loss(self, towers, probability_dist_targets):
+    def policy_loss(self, towers, probability_dist_targets, policy_smoothing=0.):
+        # N x |DIST|
         large_targets = self.large_policy_from_condensed(probability_dist_targets)
+
         policies = self.policy_network_from_towers(towers)
-        criterion = nn.CrossEntropyLoss()
-        loss = criterion(policies, large_targets)
-        return loss
+
+        # crossentropy loss
+        # annoying to use torch.nn.CrossEntropyLoss since it assumes the output is pre softmax
+        # so, just implement it manually like this
+        policy_losses = -torch.sum(large_targets*torch.log(policy_smoothing + policies), dim=1)
+
+        # calculate the entropy of the target distribution, and subtract it
+        # all this does is shift the loss so that the optimal loss is 0
+        # this will not affect the gradients at all, as this is a constant wrt the network params
+        optimal_policy_losses = -torch.sum(large_targets*torch.log(large_targets), dim=1)
+
+        overall_loss = policy_losses - optimal_policy_losses
+
+        return overall_loss.mean()  # average across N
 
     def value_loss(self, towers, targets):
         tower_embeddings = torch.stack([self.tower_embedder(tower) for tower in towers], dim=0)
